@@ -19,6 +19,12 @@ The backend suite exercises the actual released executable. It proves native `/v
 
 The ChatGPT CLI test supplies a fake executable to verify delegation, exact arguments, credential persistence checks, failure detection, and absence of token output. The genuine `-siwc-bind` flag and credential/executor paths were inspected in the pinned source and binary. This establishes implementation compatibility, not a live SIWC authentication test.
 
+## Recorded validation run
+
+On 2026-10-14, `sh scripts/test-offline.sh` passed **40 tests**: 33 core/fault/operation tests, 3 pinned backend contracts, and 4 real SDK client tests. The container used `--network none` and a read-only repository. No tests were skipped.
+
+The runtime Docker image also built successfully and completed a separate network-isolated inference/accounting/capture smoke check. The README demo and `scripts/live-smoke.js` were exercised against the local fake provider, including separate project usage. Actual account login, provider inference, quota consumption, and real refresh remain unverified.
+
 ## Supported capability profile
 
 | Capability | Initial support |
@@ -54,7 +60,7 @@ The original architecture's scenario IDs are retained here for traceability. A l
 | A08 | Cancellation, missing usage, early EOF, and terminal failure preserve independent state families. |
 | A09 | Gateway makes no automatic retry and settlement is idempotent; internal multiple attempts are explicitly unobserved. |
 | A10 | Cache/reasoning subsets are not double-counted; invalid/conflicting totals remain unknown. |
-| A11 | Real pi/AI SDK text streaming for both protocols; ChatGPT constraints reject incompatible fields. Provider-specific multimodal/tool capabilities require route-specific live checks. |
+| A11 | Real pi/AI SDK text streaming for both protocols; raw partial tool arguments, tool IDs, repeated context, opaque fields, and multimodal references round-trip in deterministic fixtures. ChatGPT constraints reject incompatible fields. Actual provider-specific multimodal/tool capabilities require route-specific live checks. |
 | A12 | Original request/stream bytes, token-like strings, and executable-looking text round-trip unchanged. |
 | A13 | Manifests label the client application boundary and excluded upstream/header/remote-URL data. |
 | A14 | Required and best-effort storage exhaustion before dispatch and during streaming tested. |

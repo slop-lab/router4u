@@ -8,7 +8,7 @@ CLIProxyAPI v8.0.28 owns upstream credentials, OAuth, refresh, and protocol tran
 
 The backend adapter exposes request-level observation only. It never polls the destructive management usage queue as an authoritative ledger. Missing usage remains unknown. Strict token budgets are rejected; estimate-based token budgets and strict local request/concurrency limits are supported. Internal attempts and upstream translated payloads are not claimed to be fully observed.
 
-Initial routes target dedicated backend partitions. Account-specific attribution requires a verified exclusive credential binding. Backend management is available only to operators. Client projects receive their own Router4u key, never an upstream credential.
+Initial routes target dedicated backend partitions. Account-specific attribution requires a verified exclusive credential binding; configured bindings are checked against backend version, retry settings, and the sole active credential before admission. Backend management is available only to operators. Client projects receive their own Router4u key, never an upstream credential.
 
 ## Milestones
 
