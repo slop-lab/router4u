@@ -16,3 +16,8 @@ The pinned backend exposes request-level observations. Internal attempts and tra
 Credential mode and live account eligibility require operator verification because the management metadata does not expose the SIWC binding flag. OAuth callbacks and refresh remain backend-owned. Provider behavior cannot be proven using inert credentials.
 
 All operational additions require offline behavioral tests. Backend mutations require the pinned executable contract suite. Deployment tests use network-isolated fake upstreams and must not consume a real account's quota.
+
+
+## Recorded completion
+
+The operational implementation groups above are delivered. The final isolated suite passed 58 tests (50 core/operation, four pinned-backend contracts, four SDK contracts), and the Docker lifecycle suite passed with generated extra partitions and full installation recovery. See `validation.md` for measured overhead and the exact provider-dependent exclusions. All generated credentials, auth directories, runtime state, and private reference material remain outside Git.

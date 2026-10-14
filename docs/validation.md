@@ -21,9 +21,9 @@ The ChatGPT CLI test supplies a fake executable to verify delegation, exact argu
 
 ## Recorded validation run
 
-On 2026-10-14, `sh scripts/test-offline.sh` passed **40 tests**: 33 core/fault/operation tests, 3 pinned backend contracts, and 4 real SDK client tests. The container used `--network none` and a read-only repository. No tests were skipped.
+On 2026-10-14, the final `sh scripts/test-offline.sh` run passed **58 tests**: 50 core/fault/administration/operation tests, 4 pinned backend contracts, and 4 real SDK client tests. The container used `--network none` and a read-only repository. No tests were skipped.
 
-The runtime Docker image also built successfully and completed a separate network-isolated inference/accounting/capture smoke check. The README demo and `scripts/live-smoke.js` were exercised against the local fake provider, including separate project usage. Actual account login, provider inference, quota consumption, and real refresh remain unverified.
+Both runtime Docker images built successfully. The deployment suite also passed with two isolated application containers, the real pinned backend against a fake upstream, and a generated additional backend partition. It verifies direct-backend network denial, cross-project authorization, project container recreation, config reload, automatic `unless-stopped` restart after a killed gateway process, unknown dispatch recovery, and full installation backup/restore including inert credentials and extra partitions. The README demo and `scripts/live-smoke.js` were exercised against the local fake provider, including separate project usage. Actual account login, provider inference, quota consumption, and real refresh remain unverified.
 
 ## Supported capability profile
 
@@ -41,7 +41,10 @@ The runtime Docker image also built successfully and completed a separate networ
 | Token limits | Observe/estimate only; strict configuration rejected |
 | Continuation | HTTP persistent handles rejected; send complete history |
 | Capture | Client-facing application bodies only; translated upstream exchanges unavailable |
-| Cancellation | Best effort, with independent accounting and delivery state |
+| Cancellation | Best effort; uncertain physical occupancy survives until explicit audited resolution, independently of token accounting |
+| Administration | Versioned reload, account registry/lifecycle delegation, scopes, effective policy, retention, paginated exports, metrics and pull alerts |
+| Additional budgets | Calendar day/month and rolling request/token/observable-dispatch budgets; request/token rates and project archive limits |
+| Deployment | Compose, private backend network, persistent state, `unless-stopped`, complete installation backup/restore |
 | Multi-replica / new bindings | Not enabled |
 
 ## Acceptance mapping
@@ -50,7 +53,7 @@ The original architecture's scenario IDs are retained here for traceability. A l
 
 | ID | Implemented evidence / remaining boundary |
 |---|---|
-| A01 | Project keys/state are external to applications; gateway restart and restore tests preserve records. Full project-container deployment lifecycle remains an operator deployment check. |
+| A01 | Docker deployment test runs two projects with independent identities, recreates one container, and verifies shared usage and credentials/state remain external. Real upstream login reuse remains a live check. |
 | A02 | Key rotation/revocation test preserves shared project usage. |
 | A03 | Project spoofing, cross-project reads/cancellation, unknown routes rejected; persistent continuation disabled. |
 | A04 | Project-to-route allowlists and dedicated partitions; exclusive-binding verification rejects unverified account configurations. Real account scheduling remains a live partition check. |
@@ -58,7 +61,7 @@ The original architecture's scenario IDs are retained here for traceability. A l
 | A06 | Concurrent HTTP requests compete for the final allowance; one commits. Shared service budget is applied across projects. |
 | A07 | Strict token policy rejected explicitly. |
 | A08 | Cancellation, missing usage, early EOF, and terminal failure preserve independent state families. |
-| A09 | Gateway makes no automatic retry and settlement is idempotent; internal multiple attempts are explicitly unobserved. |
+| A09 | Gateway makes no automatic retry. Settlement and stable source/event corrections are idempotent; undispatched observable-attempt reservations are released. Internal multiple attempts are explicitly unobserved, so full internal-attempt accounting is excluded. |
 | A10 | Cache/reasoning subsets are not double-counted; invalid/conflicting totals remain unknown. |
 | A11 | Real pi/AI SDK text streaming for both protocols; raw partial tool arguments, tool IDs, repeated context, opaque fields, and multimodal references round-trip in deterministic fixtures. ChatGPT constraints reject incompatible fields. Actual provider-specific multimodal/tool capabilities require route-specific live checks. |
 | A12 | Original request/stream bytes, token-like strings, and executable-looking text round-trip unchanged. |
@@ -66,13 +69,41 @@ The original architecture's scenario IDs are retained here for traceability. A l
 | A14 | Required and best-effort storage exhaustion before dispatch and during streaming tested. |
 | A15 | Actual SIGKILL after durable dispatch; reservation retained without replay. Undispatched recovery tested separately. |
 | A16 | Missing usage remains unresolved; no destructive queue polling or complete-attempt claim. |
-| A17 | Active request policy snapshot survives a project policy change. |
+| A17 | Active project/configuration/recording-limit snapshots survive edits. Invalid reloads leave the previous revision active. New budgets include historical traffic; budget identity cannot silently change. |
 | A18 | All clients work without Langfuse, session metadata, or tracing SDKs. |
 | A19 | Exchange export is JSON with base64 bodies and `nosniff`; no HTML renderer, tool execution, URL fetch, or replay. |
-| A20 | SQLite backup/restore preserves payload integrity and unresolved reservations. Other transports are disabled; adding one requires the same contract suite. |
+| A20 | Full Docker installation backup/restore preserves inert credentials, extra partitions, payloads, ledger, and unknown reservations. Hash tampering and overwrite are rejected. Schema-v1 identity migration and unsupported schema rejection are tested. Other transports remain disabled. |
 
 ## Live validation checklist
 
 Use your own eligible account. Complete Codex OAuth, then separately bind SIWC if testing ChatGPT plan usage. Confirm `profile` and backend credential mode match, run `doctor`, select an available model, issue an application key, and run the explicit live smoke script. Inspect the request's execution, usage quality, capture boundary, and actual provider behavior.
 
 After a successful first request, verify application restart without login, backend restart without credential loss, account-specific reauthorization, and token refresh when applicable. Exercise real cancellation cautiously and inspect any remaining usage. These steps can consume quota. Do not call a route production-verified until the relevant live checks pass.
+
+
+## Reproducible deployment and overhead checks
+
+After downloading dependencies/backend and building both images:
+
+```sh
+npm run test:deployment
+npm run benchmark
+```
+
+The deployment suite creates temporary runtime state and Docker networks, starts the actual Compose services, and removes its test installation afterward. Both application and infrastructure test networks are internal; control probes also run inside containers. No real account credentials are used. The backend's unrelated background update attempts cannot reach the Internet in this suite.
+
+The final local Linux x64 / Node 24.19.0 benchmark measured 50 sequential fake-provider requests per scenario:
+
+| Scenario | Median | p95 |
+|---|---:|---:|
+| Direct fake provider | 1.71 ms | 2.83 ms |
+| Gateway with required durable capture | 5.02 ms | 6.34 ms |
+| Midstream client cancellation | 2.85 ms | 4.92 ms |
+
+The median increment was approximately 3.30 ms on this host. Capture work averaged about 0.21 ms per gateway request in this fixture. All 50 interrupted streams retained unknown usage and uncertain occupancy; no cancelled stream was silently counted as free. These are synthetic local measurements, not a production latency target, concurrent-throughput guarantee, or evidence of actual provider cancellation. Re-run on the intended disk and workload before increasing capacity.
+
+## Remaining provider-dependent or excluded capabilities
+
+Real Codex/SIWC token exchange, entitlement, refresh rotation, provider tools/modalities, real quota semantics, and cancellation after upstream consumption still require explicit live checks. Credential restoration uses inert fixtures and cannot prove that an old rotating token will remain accepted.
+
+The pinned management metadata does not expose SIWC credential mode; operators can inspect only the local boolean/presence flags using the documented Docker command. Full hidden-attempt journaling, translated upstream capture, strict token ceilings, stateful continuation, additional transports, distributed workers, monetary estimates, and an application/agent control plane are not enabled. The architecture permits these narrower capabilities when their limits are explicit. These exclusions must not be represented as live-verified implementations.
