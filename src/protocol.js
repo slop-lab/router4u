@@ -41,7 +41,7 @@ export function normalizeUsage(raw) {
 export class ResponseObserver {
   constructor(protocol, streaming, maxBytes) {
     Object.assign(this, { protocol, streaming, maxBytes, bytes: 0, pending: '', terminal: false,
-      outcome: 'outcome_unknown', usage: null, observedModel: null, responseId: null, invalid: false });
+      outcome: 'outcome_unknown', usage: null, observedModel: null, responseId: null, invalid: false, usageConflict: false, error: null });
     this.decoder = new TextDecoder();
   }
   push(chunk) {
@@ -65,7 +65,12 @@ export class ResponseObserver {
     const response = event.response ?? event;
     this.observedModel = response.model ?? this.observedModel;
     this.responseId = response.id ?? this.responseId;
-    if (response.usage) this.usage = normalizeUsage(response.usage);
+    if (response.usage) {
+      const observation = normalizeUsage(response.usage);
+      if (this.terminal && this.usage && observation && (this.usage.input !== observation.input || this.usage.output !== observation.output)) this.usageConflict = true;
+      this.usage = this.usageConflict ? null : observation;
+    }
+    if (response.error || event.type === 'error') this.error = String(response.error?.code ?? event.code ?? 'upstream_stream_error').slice(0, 200);
     if (this.protocol === 'responses') {
       const status = event.type ?? response.status;
       if (['response.completed', 'completed', 'response.failed', 'failed', 'response.incomplete', 'incomplete'].includes(status)) {

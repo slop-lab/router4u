@@ -1,0 +1,32 @@
+import { mkdirSync, writeFileSync, readFileSync, chmodSync } from 'node:fs';
+import { resolve, join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { BACKEND_VERSION } from '../src/config.js';
+
+if (process.platform !== 'linux' || process.arch !== 'x64') throw new Error('This installer supports Linux x64. Install the pinned release manually on other platforms.');
+const name = `CLIProxyAPI_${BACKEND_VERSION}_linux_amd64_no-plugin.tar.gz`;
+const base = `https://github.com/router-for-me/CLIProxyAPI/releases/download/v${BACKEND_VERSION}`;
+const directory = resolve('.tools');
+mkdirSync(directory, { recursive: true, mode: 0o700 });
+const checksumResponse = await fetch(`${base}/checksums.txt`);
+if (!checksumResponse.ok) throw new Error(`Checksum download failed: ${checksumResponse.status}`);
+const checksums = await checksumResponse.text();
+const expected = checksums.split('\n').find(line => line.trim().endsWith(name))?.split(/\s+/)[0];
+if (!expected || !/^[a-f0-9]{64}$/.test(expected)) throw new Error('Release checksum not found');
+if (expected !== '7d41095b7daaf61ea29cdcc691c238acda4da352acf8babe3f8d8720595f7d35') throw new Error('Release checksum differs from the reviewed build');
+const response = await fetch(`${base}/${name}`);
+if (!response.ok) throw new Error(`Backend download failed: ${response.status}`);
+const archive = Buffer.from(await response.arrayBuffer());
+const actual = createHash('sha256').update(archive).digest('hex');
+if (actual !== expected) throw new Error('Backend checksum mismatch');
+const archivePath = join(directory, name);
+writeFileSync(archivePath, archive, { mode: 0o600 });
+const entries = execFileSync('tar', ['-tzf', archivePath], { encoding: 'utf8' }).trim().split('\n');
+const binary = entries.find(entry => /^(\.\/)?cli-proxy-api$/.test(entry));
+if (!binary) throw new Error('Expected executable is missing from release');
+execFileSync('tar', ['-xzf', archivePath, '-C', directory, binary]);
+chmodSync(join(directory, 'cli-proxy-api'), 0o700);
+writeFileSync(join(directory, 'backend-lock.json'), JSON.stringify({ version: BACKEND_VERSION, archive_sha256: expected,
+  binary_sha256: createHash('sha256').update(readFileSync(join(directory, 'cli-proxy-api'))).digest('hex') }, null, 2));
+console.log(`Installed CLIProxyAPI ${BACKEND_VERSION}; SHA-256 ${expected}`);

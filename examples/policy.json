@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "routes": ["personal"],
+  "concurrency": 4,
+  "requests_per_minute": 60,
+  "daily_requests": 1000,
+  "daily_tokens": 1000000,
+  "token_mode": "estimate",
+  "token_estimate": 4096,
+  "recording": "required",
+  "deadline_ms": 120000,
+  "timezone": "UTC"
+}

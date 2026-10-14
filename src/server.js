@@ -48,6 +48,17 @@ export function createGateway(input, options = {}) {
   const store = options.store ?? new Store(config.data_dir, { archiveMaxBytes: config.archive_max_bytes });
   store.recover();
   const active = new Map();
+  let exportsInFlight = 0;
+  const exportCapture = (response, id, actor) => {
+    if (exportsInFlight >= 2) throw new ServiceError(429, 'local_capacity_exhausted', 'Exchange export capacity reached', 'exports', true);
+    exportsInFlight++;
+    let released = false;
+    const release = () => { if (!released) { released = true; exportsInFlight--; } };
+    response.once('finish', release);
+    response.once('close', release);
+    store.audit(actor, 'capture.read', id);
+    json(response, 200, store.captured(id));
+  };
   const routeFor = id => {
     const route = config.routes.find(candidate => candidate.id === id);
     if (!route) throw new ServiceError(404, 'route_not_found', 'Unknown route');
@@ -83,6 +94,7 @@ export function createGateway(input, options = {}) {
     const payload = parse(raw);
     validatePayload(payload, route, protocol);
     backendHeaders(route, environment);
+    if (route.account_id) await new BackendManagement(route, environment).verifyExclusiveAccount();
     const record = store.admit(principal, route, protocol, config);
     const id = record.id;
     response.setHeader('x-router4u-request-id', id);
@@ -124,7 +136,7 @@ export function createGateway(input, options = {}) {
       store.settle(id, observer.terminal ? observer.usage : null, {
         execution: upstream.ok ? observer.outcome : 'failed', delivery: 'complete',
         observed_model: observer.observedModel, provider_response_id: observer.responseId,
-        error: !upstream.ok ? (upstream.status === 429 ? 'upstream_rate_limited' : 'upstream_error') : !observer.terminal ? 'missing_terminal_event' : null });
+        error: !upstream.ok ? (upstream.status === 429 ? 'upstream_rate_limited' : 'upstream_error') : !observer.terminal ? 'missing_terminal_event' : observer.error });
       finished = true;
       response.end();
     } catch (error) {
@@ -177,6 +189,8 @@ export function createGateway(input, options = {}) {
         if (path === '/admin/audit' && method === 'GET') return json(response, 200, store.db.prepare('SELECT * FROM audit WHERE sequence>? ORDER BY sequence LIMIT 200').all(Number(url.searchParams.get('after') ?? 0)));
         if (path === '/admin/events' && method === 'GET') return json(response, 200, store.db.prepare('SELECT * FROM outbox WHERE sequence>? ORDER BY sequence LIMIT 200').all(Number(url.searchParams.get('after') ?? 0)));
         if (path === '/admin/active' && method === 'GET') return json(response, 200, [...active.keys()].map(id => store.request(id)));
+        const listPath = path.match(/^\/admin\/projects\/([\w-]+)\/requests$/);
+        if (listPath && method === 'GET') return json(response, 200, store.requests(listPath[1]));
         const usagePath = path.match(/^\/admin\/usage\/([\w-]+)$/);
         if (usagePath && method === 'GET') return json(response, 200, store.status(usagePath[1]));
         const recordPath = path.match(/^\/admin\/requests\/([\w-]+)(?:\/(resolve|cancel|exchange))?$/);
@@ -185,15 +199,15 @@ export function createGateway(input, options = {}) {
           authorizedRequest(id);
           if (method === 'POST' && recordPath[2] === 'resolve') return json(response, 200, store.resolve(id, body.tokens, body.reason));
           if (method === 'DELETE' && recordPath[2] === 'exchange') return json(response, 200, store.deleteCapture(id, body.expired === true));
-          if (method === 'GET' && recordPath[2] === 'exchange') { store.audit('operator', 'capture.read', id); return json(response, 200, store.captured(id)); }
+          if (method === 'GET' && recordPath[2] === 'exchange') return exportCapture(response, id, 'operator');
           if (method === 'GET' && !recordPath[2]) return json(response, 200, store.request(id));
           if (method === 'POST' && recordPath[2] === 'cancel') return cancel(id, response, 'operator');
         }
-        const backendPath = path.match(/^\/admin\/backends\/([\w-]+)\/(credentials|models|login|status|callback)$/);
+        const backendPath = path.match(/^\/admin\/backends\/([\w-]+)\/(credentials|models|login|status|callback|inspect)$/);
         if (backendPath) {
           const backend = new BackendManagement(routeFor(backendPath[1]), environment);
           const action = backendPath[2];
-          if (method === 'GET' && ['credentials', 'models'].includes(action)) return json(response, 200, await backend[action]());
+          if (method === 'GET' && ['credentials', 'models', 'inspect'].includes(action)) return json(response, 200, await backend[action]());
           if (method === 'POST' && action === 'login') { store.audit('operator', 'oauth.start', backendPath[1]); return json(response, 200, await backend.login()); }
           if (method === 'POST' && action === 'callback') return json(response, 200, await backend.callback(body.redirect_url));
           if (method === 'GET' && action === 'status') return json(response, 200, await backend.status(url.searchParams.get('state')));
@@ -220,7 +234,7 @@ export function createGateway(input, options = {}) {
           const id = recordPath[1];
           authorizedRequest(id, principal);
           if (method === 'GET' && !recordPath[2]) return json(response, 200, store.request(id));
-          if (method === 'GET' && recordPath[2] === 'exchange') { store.audit(principal.id, 'capture.read', id); return json(response, 200, store.captured(id)); }
+          if (method === 'GET' && recordPath[2] === 'exchange') return exportCapture(response, id, principal.id);
           if (method === 'POST' && recordPath[2] === 'cancel') return cancel(id, response, principal.id);
         }
       }

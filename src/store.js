@@ -13,6 +13,7 @@ export class Store {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     this.path = join(directory, 'router4u.sqlite');
     this.db = new DatabaseSync(this.path);
+    if (this.db.prepare('PRAGMA user_version').get().user_version > 1) { this.db.close(); throw new Error('Database schema is newer than this service'); }
     chmodSync(this.path, 0o600);
     this.clock = clock;
     this.archiveMaxBytes = archiveMaxBytes;
@@ -100,6 +101,7 @@ export class Store {
     const period = periodFor(this.clock(), project.policy.timezone);
     return { project, period, ...this.totals(projectId, period),
       active: this.db.prepare('SELECT COUNT(*) AS count FROM requests WHERE project_id=? AND active=1').get(projectId).count,
+      outstanding_all_periods: this.db.prepare('SELECT COUNT(*) AS count,COALESCE(SUM(reserved),0) AS reserved_tokens FROM requests WHERE project_id=? AND tokens IS NULL').get(projectId),
       uncertainty: 'Usage is observed at the backend response boundary; internal attempts may be hidden.',
       observed_at: this.clock(), paused: this.paused() };
   }
@@ -127,7 +129,7 @@ export class Store {
       const id = randomUUID();
       const record = { id, principal_id: principal.id, project_id: project.id, period, service_period: servicePeriod,
         policy_revision: project.revision, policy, route: { id: route.id, profile: route.profile, account_id: route.account_id ?? null,
-          account_attribution: route.account_id ? 'operator_declared_exclusive_partition' : 'unknown', base_url: route.base_url },
+          account_attribution: route.account_id ? 'verified_exclusive_partition' : 'unknown', base_url: route.base_url },
         protocol, created: now, admission: 'admitted', execution: 'pending', delivery: 'not_started', accounting: 'reserved',
         capture: policy.recording === 'metadata' ? 'disabled_by_policy' : 'pending', attempt_id: randomUUID(),
         attempt_visibility: 'request_only', usage: null, error: null, cancellation_requested: false };

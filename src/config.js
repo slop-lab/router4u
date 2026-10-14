@@ -40,7 +40,7 @@ export function validateConfig(input) {
   requireValue(Array.isArray(config.routes) && config.routes.length > 0, 'At least one route is required');
   const seen = new Set();
   for (const route of config.routes) {
-    requireValue(/^[a-zA-Z0-9_-]{1,64}$/.test(route.id) && !seen.has(route.id), 'Invalid or duplicate route ID');
+    requireValue(typeof route.id === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(route.id) && !seen.has(route.id), 'Invalid or duplicate route ID');
     seen.add(route.id);
     requireValue(['api_key', 'codex', 'chatgpt'].includes(route.profile), 'Invalid route profile');
     requireValue(Array.isArray(route.models) && route.models.length > 0 && route.models.every(model => typeof model === 'string' && model.length < 200), 'Explicit model allowlist is required');
@@ -50,7 +50,7 @@ export function validateConfig(input) {
     const backendURL = new URL(route.base_url);
     requireValue(['http:', 'https:'].includes(backendURL.protocol) && !backendURL.username && !backendURL.password && !backendURL.search && !backendURL.hash, 'Invalid backend URL');
     requireValue(backendURL.protocol === 'https:' || ['127.0.0.1', 'localhost', '[::1]'].includes(backendURL.hostname) || config.allow_private_http === true, 'Non-loopback HTTP requires allow_private_http');
-    requireValue(!route.account_id || (typeof route.account_id === 'string' && route.exclusive_account === true), 'Account attribution requires an exclusive backend partition');
+    requireValue(!route.account_id || (typeof route.account_id === 'string' && route.exclusive_account === true && typeof route.credential_name === 'string' && typeof route.management_key_env === 'string'), 'Account attribution requires an exclusive backend partition');
   }
   config.data_dir = resolve(config.data_dir);
   return config;
