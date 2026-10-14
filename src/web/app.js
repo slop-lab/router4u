@@ -1,7 +1,7 @@
 'use strict';
 const $ = selector => document.querySelector(selector);
 let csrf, pageVersion = 0, noticeTimer;
-const titles = { overview: 'Your control room', connections: 'Connected accounts', projects: 'Projects & keys', requests: 'Request history', settings: 'Workspace settings', activity: 'Activity & recovery' };
+const titles = { overview: 'Your control room', connections: 'Connections', projects: 'Projects & keys', requests: 'Request history', settings: 'Workspace settings', activity: 'Activity & recovery' };
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
@@ -67,7 +67,7 @@ async function editRoute(route, snapshot) {
   const key = input(route?.key_env ?? 'ROUTER4U_BACKEND_KEY', { required: '' });
   const management = input(route?.management_key_env ?? 'ROUTER4U_BACKEND_MANAGEMENT_KEY');
   const protocols = el('select', {}, el('option', { value: 'responses' }, 'Responses'), el('option', { value: 'responses,chat' }, 'Responses and Chat Completions')); protocols.value = route?.protocols.join(',') ?? 'responses';
-  const enabled = el('select', {}, el('option', { value: 'false' }, 'Disabled · setup or maintenance'), el('option', { value: 'true' }, 'Enabled · accept requests'));
+  const enabled = el('select', {}, el('option', { value: 'false' }, 'Off · setup or maintenance'), el('option', { value: 'true' }, 'On · accept requests'));
   enabled.value = route && route.enabled !== false ? 'true' : 'false';
   const discovery = el('div');
   const discover = route ? action('Load available models', async () => {
@@ -80,7 +80,7 @@ async function editRoute(route, snapshot) {
   }) : muted('Save the disabled connection first, then sign in and load its available models.');
   const details = el('details', {}, el('summary', {}, 'Backend connection settings'), field('Authentication profile', profile), field('Backend base URL', base), field('Client protocols', protocols), field('Backend key environment variable', key), field('Management key environment variable', management));
   if (!route) details.open = true;
-  const form = el('form', {}, muted('Connect your account first, then choose which models your applications may use. Inference remains disabled until you select models and enable this connection.'), field('Route ID', id), field('Allowed model IDs', models), discover, discovery, field('Connection status', enabled), details, el('button', {}, 'Save route'));
+  const form = el('form', {}, muted('Connect your account first, then choose which models your applications may use. Inference remains disabled until you select models and enable this connection.'), field('Route ID', id), field('Allowed model IDs', models), discover, discovery, field('Request routing', enabled), details, el('button', {}, 'Save route'));
   form.addEventListener('submit', async event => { event.preventDefault(); try {
     const { revision, ...config } = snapshot.config;
     const next = { ...route, id: id.value, profile: profile.value, enabled: enabled.value === 'true', base_url: base.value, models: models.value.split(',').map(s => s.trim()).filter(Boolean), protocols: protocols.value.split(','), key_env: key.value };
@@ -89,6 +89,57 @@ async function editRoute(route, snapshot) {
     await api('/admin/config', 'PUT', { revision: snapshot.revision, config }); $('#detail').close(); notify('Route saved'); await render();
   } catch (error) { notify(error.message); } });
   modal(route ? 'Edit route' : 'Add a backend route', form);
+}
+async function connectCodex(route) {
+  const result = await api(`/admin/backends/${route.id}/login`, 'POST', {});
+  const callback = input('', { placeholder: 'http://localhost:1455/auth/callback?…' });
+  const status = el('p', { role: 'status' }, 'Waiting for sign-in…');
+  const next = el('div');
+  let terminal = false, checking = false;
+  const active = () => csrf && $('#detail').open && status.isConnected;
+  async function check() {
+    if (!active() || terminal || checking) return;
+    checking = true;
+    try {
+      const value = await api(`/admin/backends/${route.id}/status?state=${encodeURIComponent(result.state)}`);
+      if (!active()) return;
+      if (value.status === 'ok') {
+        terminal = true;
+        status.textContent = 'Codex sign-in complete. CLIProxyAPI saved the account.';
+        callback.disabled = true;
+        next.replaceChildren(muted('Choose allowed models and turn on request routing to use this connection.'), action('Set up models', async () => {
+          const snapshot = await api('/admin/config');
+          await editRoute(snapshot.config.routes.find(item => item.id === route.id), snapshot);
+        }, 'primary'));
+        await render();
+      } else if (value.status === 'error') {
+        terminal = true;
+        status.textContent = `Sign-in failed: ${typeof value.error === 'string' ? value.error : 'Start a new sign-in attempt.'}`;
+        next.replaceChildren(action('Try sign-in again', () => connectCodex(route)));
+      } else status.textContent = 'Waiting for CLIProxyAPI to complete sign-in…';
+    } catch (error) { if (active()) status.textContent = `Unable to check sign-in: ${error.message}`; }
+    finally { checking = false; }
+  }
+  const authURL = result.url ?? result.auth_url; let link;
+  try { const parsed = new URL(authURL); if (parsed.protocol === 'https:') link = el('a', { href: parsed.href, target: '_blank', rel: 'noopener noreferrer' }, 'Open provider sign-in ↗'); } catch {}
+  modal(`Connect Codex · ${route.id}`, muted('Complete sign-in in a new tab. This connection uses CLIProxyAPI for sign-in and credential storage. If the localhost callback does not load, paste its full URL below.'), link ?? muted('No valid HTTPS authorization URL was returned.'), status, field('Callback URL', callback), row(action('Submit callback', async () => {
+    if (terminal) return;
+    const value = callback.value; callback.value = '';
+    const response = await api(`/admin/backends/${route.id}/callback`, 'POST', { redirect_url: value });
+    if (!active() || terminal) return;
+    if (response.status === 'error') { status.textContent = `Callback failed: ${response.error ?? 'Try again.'}`; return; }
+    status.textContent = 'Callback received. Waiting for CLIProxyAPI to complete sign-in…';
+    await check();
+  }), action('Check status', check)), next);
+  async function poll() { await check(); if (active() && !terminal) setTimeout(poll, 2000); }
+  void poll();
+}
+function credentialSummary(route, observation) {
+  if (observation.error) return muted(`Account status unavailable: ${observation.error}`);
+  if (!observation.files) return muted('Account status unavailable: backend management is not configured.');
+  const files = observation.files.filter(file => route.profile !== 'codex' || file.provider === 'codex');
+  if (!files.length) return muted(route.profile === 'codex' ? 'No Codex account connected' : 'No stored OAuth accounts. Provider API keys are configured in CLIProxyAPI.');
+  return el('div', {}, ...files.map(file => muted(`${file.name ?? file.id ?? 'Account'} · ${file.disabled ? 'Account disabled' : file.unavailable ? 'Account unavailable' : file.status && file.status !== 'active' ? `Account status: ${file.status}` : 'Connected'}${file.provider ? ` · ${file.provider}` : ''}`)));
 }
 const pages = {
   async overview() {
@@ -103,22 +154,21 @@ const pages = {
   async connections() {
     const [snapshot, accounts] = await Promise.all([api('/admin/config'), api('/admin/accounts')]);
     const { config } = snapshot;
+    const observations = await Promise.all(config.routes.map(async route => {
+      if (!route.management_key_env) return {};
+      try { return { files: await api(`/admin/backends/${route.id}/credentials`) }; }
+      catch (error) { return { error: error.message }; }
+    }));
     return [el('div', { class: 'warning' }, 'Personal use only. Connect only accounts you own and use them yourself. You are responsible for complying with each provider’s terms and plan restrictions. Technical support does not grant permission to share account access.'),
-      card(heading('Upstream connections'), muted('CLIProxyAPI owns sign-in, credential storage, and token refresh. Routes select an existing backend connection.'), action('Add route', () => editRoute(null, snapshot), 'primary')),
-      el('div', { class: 'grid' }, ...config.routes.map(route => card(row(heading(route.id), el('span', { class: 'badge' }, route.profile), el('span', { class: 'badge' }, route.enabled === false ? 'Disabled' : 'Enabled')), muted(route.models.length ? route.models.join(' · ') : 'No models selected. Connect your account, then set up models.'), row(
+      row(muted('Each connection uses an installed CLIProxyAPI backend. Connect an account here, then choose models for your applications.'), action('Add route', () => editRoute(null, snapshot))),
+      el('div', { class: 'grid' }, ...config.routes.map((route, index) => card(row(heading(route.id), el('span', { class: 'badge' }, route.profile), el('span', { class: 'badge' }, route.enabled === false ? 'Request routing: off' : 'Request routing: on')), credentialSummary(route, observations[index]), muted(route.models.length ? route.models.join(' · ') : 'No models selected. Connect your account, then set up models.'), row(
         action(route.enabled === false ? 'Set up models' : 'Edit route', () => editRoute(route, snapshot)),
         action('Inspect', async () => modal(`${route.id} · Connection`, pretty(await api(`/admin/backends/${route.id}/inspect`)))),
         action('Models', async () => modal(`${route.id} · Models`, pretty(await api(`/admin/backends/${route.id}/models`)))),
         action('Credentials', async () => modal(`${route.id} · Credentials`, pretty(await api(`/admin/backends/${route.id}/credentials`)))),
-        ...(route.management_key_env && route.profile === 'codex' ? [action('Connect Codex', async () => {
-          const result = await api(`/admin/backends/${route.id}/login`, 'POST', {});
-          const callback = input('', { placeholder: 'http://localhost:1455/auth/callback?…' });
-          const authURL = result.url ?? result.auth_url; let link;
-          try { const parsed = new URL(authURL); if (parsed.protocol === 'https:') link = el('a', { href: parsed.href, target: '_blank', rel: 'noopener noreferrer' }, 'Open provider sign-in ↗'); } catch {}
-          modal('Connect your Codex account', muted('Complete sign-in in a new tab. If the localhost callback does not load, paste the full callback URL below. Do not share it.'), link ?? muted('No valid HTTPS authorization URL was returned.'), field('Callback URL', callback), row(action('Submit callback', async () => { const value = callback.value; callback.value = ''; const response = await api(`/admin/backends/${route.id}/callback`, 'POST', { redirect_url: value }); notify(response.status ?? 'Callback submitted'); }), action('Check status', async () => notify(JSON.stringify(await api(`/admin/backends/${route.id}/status?state=${encodeURIComponent(result.state ?? '')}`))))));
-        })] : [])
+        ...(route.management_key_env && route.profile === 'codex' ? [action('Connect Codex', () => connectCodex(route))] : [])
       )))),
-      card(heading('Account registry'), accounts.length ? table(['Account', 'Route', 'State', 'Actions'], accounts.map(account => [account.id, account.route_id, account.status ?? 'Not inspected', row(...['inspect', 'refresh', 'disable', 'enable', 'remove'].map(operation => action(operation, async () => { if (operation === 'remove' && !confirm(`Remove credential for ${account.id}?`)) return; modal(`${account.id} · ${operation}`, pretty(await api(`/admin/accounts/${account.id}/${operation}`, operation === 'inspect' ? 'GET' : 'POST', operation === 'inspect' ? undefined : {}))); })))])) : muted('No accounts registered for exclusive attribution. Add account metadata and an exclusive route in Settings. Credential changes require paused admissions and no active or uncertain work.'))];
+      el('details', { class: 'card' }, el('summary', {}, 'Advanced account attribution'), accounts.length ? table(['Account', 'Route', 'State', 'Actions'], accounts.map(account => [account.id, account.route_id, account.status ?? 'Not inspected', row(...['inspect', 'refresh', 'disable', 'enable', 'remove'].map(operation => action(operation, async () => { if (operation === 'remove' && !confirm(`Remove credential for ${account.id}?`)) return; modal(`${account.id} · ${operation}`, pretty(await api(`/admin/accounts/${account.id}/${operation}`, operation === 'inspect' ? 'GET' : 'POST', operation === 'inspect' ? undefined : {}))); })))])) : muted('Connected accounts are shown above. Optional attribution metadata binds a route to one specific credential for strict account policies; it does not connect an account. Configure it in Settings. Credential changes require paused admissions and no active or uncertain work.'))];
   },
   async projects() {
     const [projects, { config }, keys] = await Promise.all([api('/admin/projects'), api('/admin/config'), api('/admin/principals')]);

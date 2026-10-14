@@ -21,7 +21,7 @@ No model or provider credential is needed during installation. Open **http://127
 
 1. In **Connections → personal**, choose **Connect Codex** and finish sign-in.
 2. Choose **Set up models → Load available models**, select the models you want, and click **Use selected models**.
-3. Set **Connection status** to **Enabled** and **Save route**.
+3. Set **Request routing** to **On** and **Save route**.
 4. In **Projects & keys**, create a project, allow its connection, and issue an application key.
 
 The initial connection is disabled and has no model allowlist. No inference is admitted until it is configured and enabled. Use the [web control room](docs/web-ui.md) for everyday administration; `./router4u` only manages Docker lifecycle and optional CLI access.

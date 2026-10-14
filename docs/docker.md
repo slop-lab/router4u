@@ -25,7 +25,7 @@ Open `http://127.0.0.1:9470/` and sign in using `ROUTER4U_ADMIN_KEY` from the pr
 
 1. In **Connections → personal**, click **Connect Codex**, complete provider sign-in, and submit the callback URL if required. Check the returned status.
 2. Open **Set up models** and click **Load available models**. Select permitted models and click **Use selected models**. Empty discovery means the account/provider setup still needs attention; it does not authorize a wildcard route.
-3. Set **Connection status** to **Enabled** and save. Model selection alone does not activate a connection. Discovery does not prove actual model entitlement.
+3. Set **Request routing** to **On** and save. Model selection alone does not activate a connection. Discovery does not prove actual model entitlement.
 4. Open **Projects & keys**, create a project, select the enabled connection, and issue a key. Use that key in the consuming application.
 
 For API-key providers, configure the private backend provider first, then change **Backend connection settings → Authentication profile** to `api_key` and select the required protocols before enabling the route. Router4u does not ask for upstream API keys in the browser.
