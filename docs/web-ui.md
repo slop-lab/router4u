@@ -33,7 +33,7 @@ Use localhost or HTTPS for administration. HTTPS-origin login adds Secure to the
 
 ## Current limits and release scope
 
-Codex sign-in is available in the browser. The separate SIWC binding has been removed; see [migration guidance](authentication.md#migration-from-the-retired-siwc-profile).
+Codex sign-in is available in the browser. Real account login, inference, and refresh still require live validation.
 
 Multiple accounts are a design requirement. The current UI can log in to existing partitions and edit project route authorization, but it does not create backend containers or provide a complete account-add wizard. Prepare isolated accounts with [the partition workflow](docker.md#add-another-account-or-provider-partition); register exclusive account metadata in Settings when exact account eligibility is needed.
 

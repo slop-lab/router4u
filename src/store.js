@@ -14,36 +14,39 @@ export class Store {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     this.path = join(directory, 'router4u.sqlite');
     this.db = new DatabaseSync(this.path);
-    if (this.db.prepare('PRAGMA user_version').get().user_version > 2) { this.db.close(); throw new Error('Database schema is newer than this service'); }
+    const version = this.db.prepare('PRAGMA user_version').get().user_version;
+    const hasTables = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").get();
+    if (version !== 2 && (version !== 0 || hasTables)) { this.db.close(); throw new Error('Unsupported database schema; automatic conversion is not available'); }
     chmodSync(this.path, 0o600);
     this.clock = clock;
     this.archiveMaxBytes = archiveMaxBytes;
-    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; BEGIN IMMEDIATE;
-      CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS principals(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), hash TEXT UNIQUE NOT NULL, enabled INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS policies(revision TEXT PRIMARY KEY, project_id TEXT NOT NULL, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY, project_id TEXT NOT NULL, period TEXT NOT NULL, service_period TEXT NOT NULL, created INTEGER NOT NULL, active INTEGER NOT NULL, reserved INTEGER NOT NULL, tokens INTEGER, data TEXT NOT NULL);
-      CREATE INDEX IF NOT EXISTS requests_project_period ON requests(project_id,period);
-      CREATE INDEX IF NOT EXISTS requests_created ON requests(created);
-      CREATE INDEX IF NOT EXISTS requests_service_period ON requests(service_period);
-      CREATE INDEX IF NOT EXISTS requests_route ON requests(json_extract(data,'$.route.id'));
-      CREATE INDEX IF NOT EXISTS requests_account ON requests(json_extract(data,'$.route.account_id'));
-      CREATE INDEX IF NOT EXISTS requests_occupancy ON requests(json_extract(data,'$.occupancy'));
-      CREATE TABLE IF NOT EXISTS ledger(id TEXT PRIMARY KEY, request_id TEXT, project_id TEXT NOT NULL, kind TEXT NOT NULL, amount INTEGER NOT NULL, created INTEGER NOT NULL, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS captures(request_id TEXT PRIMARY KEY REFERENCES requests(id), data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS chunks(request_id TEXT NOT NULL REFERENCES captures(request_id), direction TEXT NOT NULL, sequence INTEGER NOT NULL, payload BLOB NOT NULL, hash TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(request_id,direction,sequence));
-      CREATE TABLE IF NOT EXISTS archive_usage(id INTEGER PRIMARY KEY CHECK(id=1), bytes INTEGER NOT NULL);
+    this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000');
+    if (version === 0) this.db.exec(`BEGIN IMMEDIATE;
+      CREATE TABLE projects(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE principals(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), hash TEXT UNIQUE NOT NULL, enabled INTEGER NOT NULL);
+      CREATE TABLE policies(revision TEXT PRIMARY KEY, project_id TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE requests(id TEXT PRIMARY KEY, project_id TEXT NOT NULL, period TEXT NOT NULL, service_period TEXT NOT NULL, created INTEGER NOT NULL, active INTEGER NOT NULL, reserved INTEGER NOT NULL, tokens INTEGER, data TEXT NOT NULL);
+      CREATE INDEX requests_project_period ON requests(project_id,period);
+      CREATE INDEX requests_created ON requests(created);
+      CREATE INDEX requests_service_period ON requests(service_period);
+      CREATE INDEX requests_route ON requests(json_extract(data,'$.route.id'));
+      CREATE INDEX requests_account ON requests(json_extract(data,'$.route.account_id'));
+      CREATE INDEX requests_occupancy ON requests(json_extract(data,'$.occupancy'));
+      CREATE TABLE ledger(id TEXT PRIMARY KEY, request_id TEXT, project_id TEXT NOT NULL, kind TEXT NOT NULL, amount INTEGER NOT NULL, created INTEGER NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE captures(request_id TEXT PRIMARY KEY REFERENCES requests(id), data TEXT NOT NULL);
+      CREATE TABLE chunks(request_id TEXT NOT NULL REFERENCES captures(request_id), direction TEXT NOT NULL, sequence INTEGER NOT NULL, payload BLOB NOT NULL, hash TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(request_id,direction,sequence));
+      CREATE TABLE archive_usage(id INTEGER PRIMARY KEY CHECK(id=1), bytes INTEGER NOT NULL);
       INSERT OR IGNORE INTO archive_usage VALUES(1,0);
-      CREATE TABLE IF NOT EXISTS audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL, actor TEXT NOT NULL, operation TEXT NOT NULL, target TEXT NOT NULL, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS outbox(sequence INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL, request_id TEXT NOT NULL, event TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS settings(id TEXT PRIMARY KEY, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS principal_scopes(principal_id TEXT PRIMARY KEY REFERENCES principals(id), data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS configuration_revisions(revision TEXT PRIMARY KEY, created INTEGER NOT NULL, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY, data TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS usage_observations(source TEXT NOT NULL,event_id TEXT NOT NULL,request_id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(source,event_id));
-      CREATE TABLE IF NOT EXISTS budget_definitions(scope TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(scope,id));
-      CREATE TABLE IF NOT EXISTS budget_bookings(request_id TEXT NOT NULL,scope TEXT NOT NULL,budget_id TEXT NOT NULL,period TEXT NOT NULL,created INTEGER NOT NULL,resource TEXT NOT NULL,reserved INTEGER NOT NULL,amount INTEGER,PRIMARY KEY(request_id,scope,budget_id));
-      CREATE INDEX IF NOT EXISTS budgets_scope ON budget_bookings(scope,budget_id,period,created);
+      CREATE TABLE audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL, actor TEXT NOT NULL, operation TEXT NOT NULL, target TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE outbox(sequence INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL, request_id TEXT NOT NULL, event TEXT NOT NULL);
+      CREATE TABLE settings(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE principal_scopes(principal_id TEXT PRIMARY KEY REFERENCES principals(id), data TEXT NOT NULL);
+      CREATE TABLE configuration_revisions(revision TEXT PRIMARY KEY, created INTEGER NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE accounts(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE usage_observations(source TEXT NOT NULL,event_id TEXT NOT NULL,request_id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(source,event_id));
+      CREATE TABLE budget_definitions(scope TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(scope,id));
+      CREATE TABLE budget_bookings(request_id TEXT NOT NULL,scope TEXT NOT NULL,budget_id TEXT NOT NULL,period TEXT NOT NULL,created INTEGER NOT NULL,resource TEXT NOT NULL,reserved INTEGER NOT NULL,amount INTEGER,PRIMARY KEY(request_id,scope,budget_id));
+      CREATE INDEX budgets_scope ON budget_bookings(scope,budget_id,period,created);
       PRAGMA user_version=2; COMMIT;`);
   }
 
@@ -94,7 +97,9 @@ export class Store {
     if (!key) throw new ServiceError(401, 'authentication_failed', 'Project credential required');
     const principal = this.db.prepare('SELECT id,project_id FROM principals WHERE hash=? AND enabled=1').get(digest(key));
     if (!principal) throw new ServiceError(401, 'authentication_failed', 'Invalid project credential');
-    principal.scopes = decode(this.db.prepare('SELECT data FROM principal_scopes WHERE principal_id=?').get(principal.id)) ?? DEFAULT_SCOPES;
+    principal.scopes = decode(this.db.prepare('SELECT data FROM principal_scopes WHERE principal_id=?').get(principal.id));
+    try { validateScopes(principal.scopes); }
+    catch { throw new ServiceError(401, 'authentication_failed', 'Project credential has invalid scope metadata'); }
     return principal;
   }
   paused() { return decode(this.db.prepare("SELECT data FROM settings WHERE id='paused'").get()) ?? false; }

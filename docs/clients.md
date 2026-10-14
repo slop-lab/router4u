@@ -30,7 +30,7 @@ On Codex routes, use the route’s advertised protocols and verify model-specifi
 
 ## pi-ai
 
-Tested with `@earendil-works/pi-ai@1.2.0`, the current package following the older `@mariozechner/pi-ai` name. Pin the package before adopting examples from a different release.
+Tested with `@earendil-works/pi-ai@1.2.0`. Pin the package before adopting examples from a different release.
 
 ```js
 import { createModels, createProvider } from '@earendil-works/pi-ai';

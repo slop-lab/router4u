@@ -4,7 +4,7 @@ A shared, personal LLM access service with project identities, durable usage res
 
 Supports native HTTP Responses and Chat Completions. Codex account OAuth and provider API-key connections are supported. All upstream OAuth and refresh remain in CLIProxyAPI. Applications use independent Router4u project keys.
 
-**Status:** runnable single-host implementation for personal live validation. Offline fault tests, pinned CLIProxyAPI contracts, and real pi/Vercel SDK clients are automated. A successful test against a fake provider does not establish live OAuth eligibility, quota, refresh behavior, or upstream cancellation. See [validation scope](docs/validation.md).
+**Status:** initial development, with no production release or validated live-provider deployment. The project owner has not yet validated the end-to-end workflow with real accounts or applications. Offline fault tests, pinned CLIProxyAPI contracts, and real pi/Vercel SDK clients are automated. A successful test against a fake provider does not establish live OAuth eligibility, quota, refresh behavior, or upstream cancellation. See [validation scope](docs/validation.md).
 
 ## Personal use and provider terms
 
@@ -55,9 +55,9 @@ curl http://127.0.0.1:9470/v1/usage -H "Authorization: Bearer $ALPHA_KEY"
 
 The demo creates two projects and a loopback fake provider. It preserves its SQLite state across restarts. Keys are saved in `.runtime/demo.env`, not source control. Inspect `GET /v1/requests` and `GET /v1/requests/REQUEST_ID/exchange` with the same project key. The second project's key cannot retrieve the first project's records. Stop with Ctrl-C.
 
-## Local development and live validation
+## Live validation
 
-Docker users connect accounts and issue project keys in the web UI above. For a host-process development installation, see [the authentication guide](docs/authentication.md#first-time-codex-login). `node src/cli.js init` also starts with a disabled, model-free connection; the optional `--model` flag is for deliberate preconfiguration.
+Connect accounts and issue project keys through the Docker-hosted web UI above. The offline demo is a development fixture, not a second installation method.
 
 To deliberately send one real request after setup:
 

@@ -7,7 +7,6 @@ import { fixture, adminKey } from './helpers.js';
 import { backupInstallation, restoreInstallation } from '../src/installation-backup.js';
 import { Store } from '../src/store.js';
 import { lockDirectory } from '../src/lock.js';
-import { DEFAULT_SCOPES } from '../src/config.js';
 const payload = { model: 'test-model', input: [], stream: true, store: false };
 const infer = setup => setup.call('/v1/responses', { body: payload });
 
@@ -118,18 +117,40 @@ test('Full installation backup restores inert credentials, payloads, ledger and 
   assert.match(readFileSync(join(restored, 'auth/inert.json'), 'utf8'), /inert-test-value/);
   const store = new Store(join(restored, 'data')); assert.equal(store.status('alpha').settled_tokens, 15); store.close();
   assert.throws(() => restoreInstallation(dest, restored), /must not exist/);
+  const manifestPath = join(dest, 'backup-manifest.json');
+  const manifest = readFileSync(manifestPath, 'utf8');
+  for (const schema of [1, 999, undefined]) {
+    writeFileSync(manifestPath, JSON.stringify({ ...JSON.parse(manifest), schema_version: schema }));
+    const target = join(setup.directory, `unsupported-backup-${schema}`);
+    assert.throws(() => restoreInstallation(dest, target), /Unsupported backup format or schema/);
+    assert.equal(existsSync(target), false);
+  }
+  writeFileSync(manifestPath, manifest);
   writeFileSync(join(dest, 'auth/inert.json'), 'tampered');
   assert.throws(() => restoreInstallation(dest, join(setup.directory, 'bad')), /integrity/);
   assert.equal(existsSync(join(setup.directory, 'bad')), false);
 });
 
-test('Schema upgrade preserves v1 identities and rejects unsupported downgrade; legacy keys lose export scope', async context => {
-  const setup = await fixture(context); const dir = join(setup.directory, 'migration');
-  let store = new Store(dir); store.putProject('legacy', { routes: ['local'] }); const issued = store.issueKey('legacy');
-  store.db.exec('DROP TABLE principal_scopes; PRAGMA user_version=1'); store.close();
-  store = new Store(dir); assert.deepEqual(store.authenticate(issued.key).scopes, DEFAULT_SCOPES); assert.equal(store.db.prepare('PRAGMA user_version').get().user_version, 2); store.close();
-  const db = new DatabaseSync(join(dir, 'router4u.sqlite')); db.exec('PRAGMA user_version=999'); db.close();
-  assert.throws(() => new Store(dir), /newer/);
+test('Unsupported schemas are rejected without modifying their contents', async context => {
+  const setup = await fixture(context);
+  for (const version of [0, 1, 999]) {
+    const dir = join(setup.directory, `unsupported-${version}`); mkdirSync(dir);
+    const path = join(dir, 'router4u.sqlite');
+    let db = new DatabaseSync(path); db.exec(`CREATE TABLE sentinel(value TEXT); INSERT INTO sentinel VALUES('preserved'); PRAGMA user_version=${version}`); db.close();
+    assert.throws(() => new Store(dir), /Unsupported database schema/);
+    db = new DatabaseSync(path);
+    assert.equal(db.prepare('PRAGMA user_version').get().user_version, version);
+    assert.equal(db.prepare('SELECT value FROM sentinel').get().value, 'preserved');
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table'").get().count, 1);
+    db.close();
+  }
+});
+
+test('Principal authentication requires persisted scope metadata', async context => {
+  const setup = await fixture(context);
+  setup.gateway.store.db.prepare('DELETE FROM principal_scopes WHERE principal_id=?').run(setup.alpha.principal_id);
+  assert.equal((await setup.call('/v1/usage')).status, 401);
+  assert.equal((await setup.call('/v1/usage', { key: setup.beta.key })).status, 200);
 });
 
 test('PID reuse after container restart does not preserve a stale lock', async context => {

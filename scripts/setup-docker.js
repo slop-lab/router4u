@@ -5,8 +5,8 @@ import { parseArgs } from 'node:util';
 process.umask(0o077);
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { help: { type: 'boolean' } } });
 if (values.help) { console.log('Usage: sh scripts/setup-docker.sh\nPrepare Docker configuration. Connect an account and select models in the web UI after startup.'); process.exit(0); }
-if (positionals.length) throw new Error('Setup no longer accepts a model or profile. Run sh scripts/setup-docker.sh, then configure the connection in the web UI.');
-for (const path of ['.runtime/.env', '.runtime/router4u.json', '.runtime/cliproxyapi.yaml']) if (existsSync(path)) throw new Error('Runtime already exists; refusing to overwrite it. See docs/docker.md for migration.');
+if (positionals.length) throw new Error('Usage: sh scripts/setup-docker.sh. Configure accounts and models in the web UI.');
+for (const path of ['.runtime/.env', '.runtime/router4u.json', '.runtime/cliproxyapi.yaml']) if (existsSync(path)) throw new Error('Runtime already exists; refusing to overwrite it. Use the web UI to change settings.');
 if (!existsSync('.tools/backend-lock.json')) await import('./install-backend.js');
 const lock = JSON.parse(readFileSync('.tools/backend-lock.json', 'utf8'));
 if (lock.version !== '8.0.28' || lock.archive_sha256 !== '7d41095b7daaf61ea29cdcc691c238acda4da352acf8babe3f8d8720595f7d35' || createHash('sha256').update(readFileSync('.tools/cli-proxy-api')).digest('hex') !== lock.binary_sha256) throw new Error('Pinned backend integrity check failed; reinstall the backend');

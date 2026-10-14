@@ -100,9 +100,9 @@ Add `"account_id":"work-owner"`, `"exclusive_account":true`, and `"credential_na
 
 Several credentials may share a backend only when every consuming route is permitted to use that entire account set. Such a pool has unknown actual account attribution; do not configure an exclusive account ID or claim per-account capacity enforcement for it. Account-specific eligibility requires separate partitions.
 
-## Existing installations
+## Rebuild during development
 
-Do not rerun setup to change an existing installation. Rebuild/recreate with `./router4u up -d --build`; existing configured routes and model choices remain unchanged. The old positional `MODEL PROFILE` setup arguments are rejected with guidance to use the browser. Additional partition syntax is now `ID [--profile codex|api_key]`; no model argument is accepted. Both setup scripts support `--help` without starting Docker or provisioning files.
+Use `./router4u up -d --build` to rebuild and recreate containers. Do not rerun the initializer to change settings. Both setup scripts provide `--help` without starting Docker or provisioning files. There is no released-version upgrade or migration path during initial development.
 
 ## Reload and account lifecycle
 
@@ -134,7 +134,7 @@ Registered account operations are available without editing database rows:
 
 Mutation commands require paused admissions, no active work, and no uncertain occupancy. `refresh` delegates to CLIProxyAPI; it can contact the provider. Reconnect returns the backend OAuth URL. `account remove ID` deliberately removes the referenced credential; update or disable its route/account configuration as well. Configuration is desired state; inspection reports backend drift instead of silently overwriting it.
 
-## Back up, restore, and upgrade
+## Back up and restore
 
 Stop every backend refresh owner before a complete installation backup. With generated partitions, `stop` covers them too:
 
@@ -142,7 +142,7 @@ Stop every backend refresh owner before a complete installation backup. With gen
 ./router4u cli pause
 ./router4u cli api /admin/active
 ./router4u stop
-./router4u run --rm --no-deps maintenance backup-installation --file /backups/before-upgrade --config /config/router4u.json --backend-config /config/cliproxyapi.yaml --auth-dir /auth --env-file /config/.env
+./router4u run --rm --no-deps maintenance backup-installation --file /backups/checkpoint --config /config/router4u.json --backend-config /config/cliproxyapi.yaml --auth-dir /auth --env-file /config/.env
 ```
 
 The bundle contains the SQLite ledger/reservations/archive/audit/outbox, gateway and backend configuration, environment keys, auth directory, generated partitions, and Compose settings. Files have integrity hashes. The bundle contains live credentials and original payloads. Protect it like the running installation and enforce a separate backup retention policy.
@@ -150,12 +150,12 @@ The bundle contains the SQLite ledger/reservations/archive/audit/outbox, gateway
 Restore into a new staging directory, never over an existing WAL or auth directory:
 
 ```sh
-./router4u run --rm --no-deps maintenance restore-installation --file /backups/before-upgrade --destination /restores/recovered
+./router4u run --rm --no-deps maintenance restore-installation --file /backups/checkpoint --destination /restores/recovered
 ```
 
 The result is `.runtime/restores/recovered`. With all old services stopped, install its contents as a new runtime directory, review host UID/GID and volume paths, and start exactly one backend per auth directory. Restored gateway state remains paused when the backup was paused. Check usage, unknown reservations, and exchange integrity before resuming. An old rotating provider token may require reauthorization; inert backup tests cannot validate real refresh.
 
-Before upgrading from schema v1, take a stopped-service backup with the old version, including credentials and configuration. Version 2 migrates the ledger automatically and removes implicit export authority from legacy principals. Issue explicit export principals as needed. Older code must not open a migrated database. Roll back using the **matching pre-upgrade state backup and old image**, with all newer processes stopped; do not merely swap the binary against a newer schema. Retain the old image ID/digest and dependency lock before rebuilding.
+Backup/restore is tested against the current schema using inert credentials. Opening an incompatible database is rejected without converting it. There is no automatic schema migration or previous-release compatibility contract.
 
 ## Operational checks
 

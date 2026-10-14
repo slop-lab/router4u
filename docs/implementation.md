@@ -19,11 +19,11 @@ Initial routes target dedicated backend partitions. Account-specific attribution
 
 ## Authentication baseline
 
-CLIProxyAPI 8.0.28 exposes Codex OAuth through `/v8/management/oauth/auth-url?provider=codex`. Router4u delegates login, callbacks, credential storage, and refresh. Supported profiles are `codex` and `api_key`; the separate SIWC binding has been removed. See [the decision and migration notes](authentication-comparison.md).
+CLIProxyAPI 8.0.28 exposes Codex OAuth through `/v8/management/oauth/auth-url?provider=codex`. Router4u delegates login, callbacks, credential storage, and refresh. Supported profiles are `codex` and `api_key`.
 
 ## Operational increment
 
-SQLite schema v2 adds principal scopes, account registry metadata, configuration revisions, budget definitions/bookings, and stable usage observations. Migration is transactional. Older binaries must not open v2; rollback restores the pre-upgrade backup with the old binary. Account IDs and budget resource/period definitions are immutable; creating a new budget definition includes existing matching traffic rather than resetting history.
+The current SQLite schema includes principal scopes, account registry metadata, configuration revisions, budget definitions/bookings, and stable usage observations. Only an empty database is initialized; incompatible schema versions are rejected without automatic conversion. Every principal must have persisted scope metadata; missing scopes do not inherit permissions. Account IDs and budget resource/period definitions are immutable; creating a new budget definition includes existing matching traffic rather than resetting history.
 
 Docker Compose separates application and infrastructure networks. Long-running services use `restart: unless-stopped`; a kernel file lock prevents competing gateway/maintenance containers, while PID/start-time identity protects local CLI use. Only one service process and one refresh owner per credential are supported.
 
@@ -37,4 +37,4 @@ The gateway serves a dependency-free browser UI and exchanges the operator key f
 
 ## Installation and account setup
 
-Docker bootstrap prepares infrastructure and a disabled `personal` connection without requiring a model or account. An empty model allowlist is valid only while a route is disabled. Operators sign in through CLIProxyAPI, discover/select model IDs in the browser, and explicitly enable the route. Discovery does not grant project authorization or establish real model entitlement. Existing configured installations retain their model choices. Additional partitions also start disabled and model-free; backend container provisioning remains a deployment task.
+Docker bootstrap prepares infrastructure and a disabled `personal` connection without requiring a model or account. An empty model allowlist is valid only while a route is disabled. Operators sign in through CLIProxyAPI, discover/select model IDs in the browser, and explicitly enable the route. Discovery does not grant project authorization or establish real model entitlement. Recreating a container retains saved model choices. Additional partitions also start disabled and model-free; backend container provisioning remains a deployment task.

@@ -18,11 +18,11 @@ Pinned versions:
 The backend suite exercises the actual released executable. It proves native `/v1/responses` forwarding through its Codex executor to a fake upstream, a single observed failed attempt for the configured compatible-provider route, v8 management schemas, PKCE login initiation, and local usage/capture. It does not complete a real browser login or exchange a real authorization code.
 
 
-## Recorded validation run
+## Development verification scope
 
-On 2026-10-14, the final `sh scripts/test-offline.sh` run passed **58 tests**: 50 core/fault/administration/operation tests, 4 pinned backend contracts, and 4 real SDK client tests. The container used `--network none` and a read-only repository. No tests were skipped.
+Local automated tests exercise the gateway with deterministic providers and inert credentials. They are not end-user acceptance or live-provider verification. The project remains in initial development; the owner has not yet tested the complete workflow with real accounts and applications.
 
-Both runtime Docker images built successfully. The deployment suite also passed with two isolated application containers, the real pinned backend against a fake upstream, and a generated additional backend partition. It verifies direct-backend network denial, cross-project authorization, project container recreation, config reload, automatic `unless-stopped` restart after a killed gateway process, unknown dispatch recovery, and full installation backup/restore including inert credentials and extra partitions. The README demo and `scripts/live-smoke.js` were exercised against the local fake provider, including separate project usage. Actual account login, provider inference, quota consumption, and real refresh remain unverified.
+The offline suite covers durable accounting, failure recovery, authorization, configuration, model-free setup, pinned backend contracts, and SDK clients. Browser tests cover onboarding and administration. Compose tests cover isolation, additional partitions, crash restart, and backup/restore. Run the commands below against the current checkout instead of treating earlier test counts as a release guarantee.
 
 ## Supported capability profile
 
@@ -31,7 +31,7 @@ Both runtime Docker images built successfully. The deployment suite also passed 
 | Protocols | HTTP Responses and Chat Completions, per-route allowlists |
 | Streaming | Ordered application-body SSE, incremental delivery and durable capture |
 | Codex Responses | Native Responses client contract tested; live account validation pending |
-| Legacy Codex OAuth | Backend-managed login start, callback, status; live account validation pending |
+| Codex OAuth | Backend-managed login start, callback, status; live account validation pending |
 | Credential refresh | CLIProxyAPI owns it; no second gateway refresher; real rotation not tested here |
 | Account isolation | Dedicated partitions; optional verified exclusive file-backed binding |
 | Attempt visibility | One observable backend dispatch per logical request; internal attempts remain unknown |
@@ -71,7 +71,7 @@ The original architecture's scenario IDs are retained here for traceability. A l
 | A17 | Active project/configuration/recording-limit snapshots survive edits. Invalid reloads leave the previous revision active. New budgets include historical traffic; budget identity cannot silently change. |
 | A18 | All clients work without Langfuse, session metadata, or tracing SDKs. |
 | A19 | Exchange export is JSON with base64 bodies and `nosniff`; no HTML renderer, tool execution, URL fetch, or replay. |
-| A20 | Full Docker installation backup/restore preserves inert credentials, extra partitions, payloads, ledger, and unknown reservations. Hash tampering and overwrite are rejected. Schema-v1 identity migration and unsupported schema rejection are tested. Other transports remain disabled. |
+| A20 | Full Docker installation backup/restore preserves inert credentials, extra partitions, payloads, ledger, and unknown reservations. Hash tampering and overwrite are rejected. Unsupported schema rejection without modification is tested. Other transports remain disabled. |
 
 ## Live validation checklist
 
@@ -107,24 +107,17 @@ Real Codex token exchange, entitlement, refresh rotation, provider tools/modalit
 
 Full hidden-attempt journaling, translated upstream capture, strict token ceilings, stateful continuation, additional transports, distributed workers, monetary estimates, and an application/agent control plane are not enabled. The architecture permits these narrower capabilities when their limits are explicit. These exclusions must not be represented as live-verified implementations.
 
-## Web administration acceptance (2026-10-14)
+## Reproduce browser and offline checks
 
-The web increment passed 61 offline tests: 53 core tests (including session authentication, CSRF, project/admin separation, configuration conflicts, durable browser overrides, and explicit file-reset behavior), four pinned CLIProxyAPI contracts, and four real SDK client tests. Run `sh scripts/test-offline.sh` after installing the pinned development dependencies and backend fixture.
+After installing dependencies and the pinned backend:
 
-Run `npm ci` followed by `npm run test:browser` for the actual Chromium smoke test. The script prepares pinned Node and Playwright container images, then runs with `--network none`, a read-only repository, and temporary writable browser state. Browser coverage includes login, project creation, one-time key issuance, fake-provider inference, request history, route editing, persistent configuration, audit rendering, pause/resume, reload with an existing session, a 390px viewport, and logout. Browser dependencies are development-only and are not copied into the production image.
+```sh
+sh scripts/test-offline.sh
+npm run test:browser
+```
 
-The real Compose deployment test additionally confirmed that the production image serves the web UI, accepts an operator session and CSRF-authenticated settings save, and retains browser settings across automatic `unless-stopped` crash restart and full installation backup/restore. Existing project network isolation and unknown-usage recovery checks also passed.
+The browser test prepares pinned Node and Playwright images, then runs with `--network none`, a read-only repository, and temporary browser state. It starts with a disabled connection and no models, discovers/selects a model, enables the connection, creates a project and key, sends a fake-provider request, and checks history, settings, audit, responsive layout, and logout.
 
-No live provider authentication, SIWC token exchange, actual quota comparison, or real credential refresh was performed. The earlier authentication comparison was based on fetched official documentation and pinned source, not provider execution; its retention decision has since been superseded by SIWC removal.
+The current storage implementation initializes empty databases and reopens only its exact supported schema. Tests verify unsupported schemas are left unchanged and principals with missing scope metadata cannot authenticate. No schema migration or compatibility-default permissions are implemented.
 
-## SIWC removal acceptance (2026-10-14)
-
-The supported profiles are now `codex` and `api_key`. The offline suite passes 61 tests, including rejection of retired profiles through configuration validation and browser settings, rejection of the removed CLI command without altering an inert existing credential, and Responses streaming through Codex-profile fixtures with Vercel AI SDK and pi-ai. Chromium confirms that only the supported profiles are selectable and the administration workflow remains functional. The Compose suite confirms additional partition provisioning, project isolation, crash restart, and backup/restore after removal.
-
-These are offline/local contracts, not live Codex entitlement or refresh verification. Multiple-account backend support remains in scope; the complete browser-only account provisioning workflow remains an explicit implementation gap.
-
-## Model-free setup acceptance (2026-10-14)
-
-The offline suite passes 64 tests (56 core, four pinned backend contracts, four SDK client tests). New coverage verifies argument-free Docker initialization, disabled model-free connections, additional partitions without model arguments, rejection of obsolete positional arguments, preservation of existing runtime secrets, and discovery followed by explicit enablement. An enabled route without models is rejected; a disabled route never contributes to the project model catalog or dispatches inference.
-
-Chromium starts with an empty, disabled connection and completes model discovery, allowlist selection, explicit activation, project creation, and a fake-provider request. The Compose deployment suite starts generated model-free configurations, enables the fixture through the admin API, then verifies isolation, restart, and backup/restore. No live account login or provider inference was performed.
+A complete browser-only account provisioning wizard is still missing. Backend partitions can be provisioned through deployment scripts, then connected in the UI. All real account eligibility, OAuth completion, token refresh, provider quota, and actual application compatibility remain subject to live validation.

@@ -50,7 +50,7 @@ export function restoreInstallation(source, destination) {
   if (existsSync(destination)) throw new Error('Restore destination must not exist');
   requireSeparate(source, destination);
   const manifest = JSON.parse(readFileSync(join(source, 'backup-manifest.json'), 'utf8'));
-  if (manifest.format !== 1 || manifest.schema_version > 2) throw new Error('Unsupported backup format or schema');
+  if (manifest.format !== 1 || manifest.schema_version !== 2) throw new Error('Unsupported backup format or schema');
   const actual = inventory(source).filter(file => file.path !== 'backup-manifest.json');
   if (JSON.stringify(actual) !== JSON.stringify(manifest.files)) throw new Error('Backup integrity verification failed');
   const db = new DatabaseSync(join(source, 'data/router4u.sqlite'), { readOnly: true });

@@ -1,7 +1,6 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, cpSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync, chmodSync, cpSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { randomBytes } from 'node:crypto';
 import { backup } from 'node:sqlite';
 import { createGateway } from './server.js';
 import { loadConfig } from './config.js';
@@ -15,10 +14,9 @@ const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   config: { type: 'string', default: '.runtime/router4u.json' }, route: { type: 'string', default: 'personal' },
   file: { type: 'string' }, scopes: { type: 'string' }, destination: { type: 'string' },
   'env-file': { type: 'string', default: '.runtime/.env' }, 'dry-run': { type: 'boolean' },
-  from: { type: 'string' }, to: { type: 'string' }, model: { type: 'string' },
+  from: { type: 'string' }, to: { type: 'string' },
   'backend-config': { type: 'string', default: '.runtime/cliproxyapi.yaml' },
   'auth-dir': { type: 'string', default: '.runtime/auth' },
-  profile: { type: 'string', default: 'codex' },
   url: { type: 'string', default: 'http://127.0.0.1:9470' }, method: { type: 'string', default: 'GET' },
   tokens: { type: 'string' }, reason: { type: 'string' }, help: { type: 'boolean' },
 } });
@@ -31,29 +29,13 @@ function envFile() {
 }
 async function admin(path, method = 'GET', body) {
   const key = process.env.ROUTER4U_ADMIN_KEY;
-  if (!key) throw new Error('Set ROUTER4U_ADMIN_KEY or initialize .runtime/.env');
+  if (!key) throw new Error('Set ROUTER4U_ADMIN_KEY or run Docker setup');
   const response = await fetch(values.url + path, { method, redirect: 'error', signal: AbortSignal.timeout(35000),
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body) });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error?.message ?? `HTTP ${response.status}`);
   return result;
-}
-
-function init() {
-  if (existsSync('.runtime/router4u.json') || existsSync('.runtime/.env')) throw new Error('Runtime already initialized; existing credentials were preserved');
-  if (!['api_key', 'codex'].includes(values.profile)) throw new Error('Invalid profile');
-  mkdirSync('.runtime/auth', { recursive: true, mode: 0o700 });
-  const operator = randomBytes(32).toString('base64url');
-  const backend = randomBytes(32).toString('base64url');
-  const management = randomBytes(32).toString('base64url');
-  writeFileSync('.runtime/.env', `ROUTER4U_ADMIN_KEY=${operator}\nROUTER4U_BACKEND_KEY=${backend}\nROUTER4U_BACKEND_MANAGEMENT_KEY=${management}\n`, { mode: 0o600 });
-  const config = { host: '127.0.0.1', port: 9470, data_dir: '.runtime/data', routes: [{ id: values.route, profile: values.profile,
-    base_url: 'http://127.0.0.1:8317/v1', key_env: 'ROUTER4U_BACKEND_KEY', management_key_env: 'ROUTER4U_BACKEND_MANAGEMENT_KEY',
-    enabled: Boolean(values.model), models: values.model ? [values.model] : [], protocols: values.profile === 'api_key' ? ['responses', 'chat'] : ['responses'] }] };
-  writeFileSync('.runtime/router4u.json', JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
-  writeFileSync('.runtime/cliproxyapi.yaml', `config-version: 8\nserver:\n  host: "127.0.0.1"\n  port: 8317\n  max-request-body-bytes: 2097152\nmanagement:\n  allow-remote: false\n  secret-key: "${management}"\n  disable-control-panel: true\naccess:\n  api-keys: ["${backend}"]\noauth:\n  auth-dir: ${JSON.stringify(resolve('.runtime/auth'))}\nrouting:\n  strategy: "fill-first"\n  retry:\n    request-retry: 0\n    max-retry-credentials: 1\n    max-retry-interval: 0\nrequests:\n  streaming:\n    bootstrap-retries: 0\nobservability:\n  logs:\n    request-log: false\n    error-logs-max-files: 1\n  usage:\n    usage-statistics-enabled: false\n`, { mode: 0o600 });
-  print('Initialized .runtime. Start the backend and gateway, then open http://127.0.0.1:9470/ to connect an account and choose models. Keep one account per backend partition.');
 }
 
 async function auth(command) {
@@ -71,7 +53,6 @@ async function main() {
   const [command, target] = positionals;
   if (values.help || !command) return print(`Router4u operator CLI (Node.js 24)
 
-init [--profile codex|api_key] [--model MODEL]
 serve [--config PATH]
 project put ID --file POLICY.json
 project key ID [--scopes inference,usage:read,requests:read,requests:cancel,exchange:export]
@@ -106,7 +87,6 @@ api /admin/PATH [--method METHOD] [--file BODY.json]
 
 All online commands use --url and ROUTER4U_ADMIN_KEY. Local .runtime/.env is loaded if present.
 Project keys are displayed only on issuance. Full exchange exports contain sensitive original data.`);
-  if (command === 'init') return init();
   envFile();
   if (command === 'serve') {
     const config = loadConfig(values.config);

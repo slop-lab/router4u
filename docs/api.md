@@ -137,7 +137,7 @@ Project policy additionally accepts nullable positive `tokens_per_minute`, `arch
 }
 ```
 
-Budget resources are `requests`, `tokens`, and `observed_attempts`; periods are `day`, `month`, or `rolling`. A conservative observable-attempt reservation is made with admission and is released if the request never reaches dispatch. A dispatched backend call counts once even if its usage is unknown. It does not count hidden backend retries. Only local request budgets can use `strict`; token and observable-attempt budgets cannot establish a strict upstream bound. Observe-mode budgets record without rejecting for that budget. Explicit additional budgets apply independently of legacy daily limits.
+Budget resources are `requests`, `tokens`, and `observed_attempts`; periods are `day`, `month`, or `rolling`. A conservative observable-attempt reservation is made with admission and is released if the request never reaches dispatch. A dispatched backend call counts once even if its usage is unknown. It does not count hidden backend retries. Only local request budgets can use `strict`; token and observable-attempt budgets cannot establish a strict upstream bound. Observe-mode budgets record without rejecting for that budget. Explicit additional budgets apply independently of built-in daily limits.
 
 The resource, period, duration, and timezone of a budget ID are immutable. Limits and enforcement mode may change. New budget IDs backfill existing request usage/reservations so policy edits do not reset history. Calendar bookings remain in their admission period; rolling bookings use admission time. All mandatory scopes reserve in one transaction.
 

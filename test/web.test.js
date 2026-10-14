@@ -40,7 +40,7 @@ test('browser config is validated, conflict checked, and restored from persisten
   const { revision, ...config } = snapshot.config;
   const candidate = { ...config, daily_requests: 4567 };
   const put = body => f.call('/admin/config', { key: adminKey, method: 'PUT', body });
-  assert.equal((await put({ config: { ...candidate, routes: [{ ...candidate.routes[0], profile: 'chatgpt' }] }, revision })).status, 400);
+  assert.equal((await put({ config: { ...candidate, routes: [{ ...candidate.routes[0], profile: 'unsupported' }] }, revision })).status, 400);
   assert.equal(f.gateway.config.routes[0].profile, config.routes[0].profile);
   assert.equal((await put({ config: candidate, revision: 'stale' })).status, 409);
   assert.equal((await put({ config: { ...candidate, port: 5555 }, revision })).status, 400);

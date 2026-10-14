@@ -7,7 +7,6 @@
     "node": ">=24.19.0 <25"
   },
   "scripts": {
-    "start": "node src/cli.js serve",
     "test": "node --test test/*.test.js",
     "test:backend": "node --test test/backend.integration.js",
     "test:clients": "node --test test/clients.integration.js",

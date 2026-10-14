@@ -1,27 +1,25 @@
-# Remaining architecture implementation
+# Development status and remaining work
 
-The private architecture is the requirements baseline. This increment completes the single-host operational path without moving OAuth, refresh, protocol translation, application tools, or conversation ownership into Router4u.
+The private architecture is the requirements baseline. This is an initial development project, not a released service with existing users. Automated local checks do not constitute live-provider or end-user acceptance.
 
-## Implementation groups
+## Implemented for local verification
 
-1. Durable account/configuration revisions, validated reload, principal scopes, historical exports, retention, additional budget dimensions, auditable corrections, and uncertain execution occupancy.
-2. Pinned backend lifecycle operations and passive quota observations, effective-policy/capability inspection, metrics and actionable alerts.
-3. Docker Compose with `restart: unless-stopped`, private backend networking, persistent state/authentication, restart-safe locking, and CLI-driven administration.
-4. Complete installation backup/restore, schema migration protections, automated container lifecycle verification, and representative streaming/cancellation overhead measurements.
+- Project identities, explicit principal scopes, policy revisions, admission, durable usage reservations, capture, retention, and audited corrections.
+- CLIProxyAPI-owned OAuth and refresh delegation, route/account metadata, diagnostics, and conservative account constraints.
+- Docker Compose with private backend networking, persistent state, `restart: unless-stopped`, and current-schema backup/restore.
+- Model-free installation and browser login, model selection, route enablement, project/key management, request inspection, and saved settings.
+- Offline fixtures, pinned backend contracts, SDK client tests, Chromium tests, and isolated container lifecycle checks.
 
-## Deliberate capability boundaries
+See [validation boundaries](validation.md) for what these tests establish. The installation flow is Docker plus the web UI. The offline demo and maintenance CLI are development/operations tools. There is no separate host initializer, automatic schema upgrade, previous-release migration path, or compatibility permission fallback.
 
-The pinned backend exposes request-level observations. Internal attempts and translated upstream captures remain unavailable; the service must not advertise exact accounting for them. Strict token ceilings remain rejected. Stateful continuation, additional transports, queues, multiple replicas, cost estimation, and application orchestration are not enabled. These are explicit architecture-permitted exclusions, not placeholder implementations.
+## Remaining work
 
-Live account eligibility requires operator verification; management metadata is not proof of successful inference. OAuth callbacks and refresh remain backend-owned. Provider behavior cannot be proven using inert credentials.
+Multiple upstream accounts are required by the architecture (§4.2 and §5.2). Partitions, project route authorization, exclusive bindings, and scoped lifecycle operations exist. Creating partitions, provisioning secrets, and registering accounts are not yet a complete browser-only workflow.
 
-All operational additions require offline behavioral tests. Backend mutations require the pinned executable contract suite. Deployment tests use network-isolated fake upstreams and must not consume a real account's quota.
+The owner still needs to validate setup, actual account login, available models, real inference, SDK/application compatibility, restart behavior, account-specific reauthorization, and refresh against intended providers. Docker Hub publication and an installation script are deferred.
 
+## Capability boundaries
 
-## Recorded completion
+The backend exposes request-level observations. Internal attempts and translated upstream captures are unavailable. Strict token ceilings, stateful continuation, additional transports, queues, multiple replicas, monetary estimates, and application orchestration are not enabled. Missing usage remains unknown; provider quota is not inferred from local totals.
 
-The operational implementation groups above are delivered. The final isolated suite passed 58 tests (50 core/operation, four pinned-backend contracts, four SDK contracts), and the Docker lifecycle suite passed with generated extra partitions and full installation recovery. See `validation.md` for measured overhead and the exact provider-dependent exclusions. All generated credentials, auth directories, runtime state, and private reference material remain outside Git.
-
-## Multiple-account UI gap
-
-Multiple upstream accounts are required by the original architecture (§4.2 and §5.2). Dedicated backend partitions, project route authorization, exclusive account binding, and scoped lifecycle operations exist. Creating a partition, provisioning its environment secrets, and initial account registration are not yet a complete browser-only workflow. The web UI must not be described as completing account onboarding until that flow is implemented and tested.
+Behavioral changes require the offline suite. Backend adapter changes require pinned executable contracts. Automated tests use inert credentials and must not consume real provider quota.

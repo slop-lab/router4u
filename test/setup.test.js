@@ -43,9 +43,9 @@ test('Docker setup and additional partitions need no models and preserve existin
   assert.equal(JSON.parse(readFileSync(join(directory, '.runtime/router4u.json'))).routes[2].profile, 'api_key');
 });
 
-test('Obsolete setup arguments fail before runtime creation and help does not provision state', t => {
+test('Unexpected setup arguments fail before runtime creation and help does not provision state', t => {
   const directory = workspace(t);
-  assert.throws(() => run(directory, 'scripts/setup-docker.js', 'test-model', 'codex'), /no longer accepts/);
+  assert.throws(() => run(directory, 'scripts/setup-docker.js', 'test-model', 'codex'), /Usage:/);
   assert.equal(existsSync(join(directory, '.runtime')), false);
   assert.match(run(directory, 'scripts/setup-docker.js', '--help'), /web UI/);
   assert.match(run(directory, 'scripts/add-partition.js', '--help'), /web UI/);

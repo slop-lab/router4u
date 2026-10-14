@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { backup } from 'node:sqlite';
 import { Store } from '../src/store.js';
@@ -75,35 +75,6 @@ test('State directory rejects a second active owner and recovers a stale lock', 
   unlock();
   writeFileSync(join(directory, 'service.lock'), '2147483647');
   lockDirectory(directory)();
-});
-
-test('CLI initializes protected configuration and refuses credential overwrite', context => {
-  const directory = temporary(context);
-  const cli = resolve('src/cli.js');
-  execFileSync(process.execPath, [cli, 'init'], { cwd: directory });
-  const config = JSON.parse(readFileSync(join(directory, '.runtime/router4u.json')));
-  assert.deepEqual(config.routes[0].models, []);
-  assert.equal(config.routes[0].enabled, false);
-  const secretFile = join(directory, '.runtime/.env');
-  const original = readFileSync(secretFile, 'utf8');
-  assert.equal(statSync(secretFile).mode & 0o777, 0o600);
-  assert.throws(() => execFileSync(process.execPath, [cli, 'init'], { cwd: directory, stdio: 'pipe' }));
-  assert.equal(readFileSync(secretFile, 'utf8'), original);
-});
-
-test('Retired SIWC profiles and commands reject without mutating credentials', async context => {
-  const directory = temporary(context);
-  const cli = resolve('src/cli.js');
-  execFileSync(process.execPath, [cli, 'init', '--profile', 'codex'], { cwd: directory });
-  const config = JSON.parse(readFileSync(join(directory, '.runtime/router4u.json')));
-  assert.throws(() => validateConfig({ ...config, routes: [{ ...config.routes[0], profile: 'chatgpt' }] }), /Unsupported route profile/);
-  const credentialPath = join(directory, '.runtime/auth/owner.json');
-  const original = '{"type":"codex","use_siwc":true,"siwc":{"access_token":"inert-retired-token"}}';
-  writeFileSync(credentialPath, original);
-  assert.throws(() => execFileSync(process.execPath, [cli, 'auth', 'chatgpt'], { cwd: directory, stdio: 'pipe' }), /Use auth codex/);
-  assert.equal(readFileSync(credentialPath, 'utf8'), original);
-  const help = execFileSync(process.execPath, [cli, '--help'], { cwd: directory, encoding: 'utf8' });
-  assert.doesNotMatch(help, /chatgpt|siwc|backend-bin|credential/);
 });
 
 test('Management metadata strips credentials and OAuth callback rejects external URLs', async context => {
