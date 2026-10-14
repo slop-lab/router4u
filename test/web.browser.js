@@ -44,6 +44,7 @@ try {
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('link', { name: 'Connections', exact: true }).click();
   await page.getByRole('button', { name: 'Edit route', exact: true }).click();
+  assert.deepEqual(await page.getByLabel('Authentication profile').locator('option').evaluateAll(options => options.map(option => option.value)), ['codex', 'api_key']);
   await page.getByLabel('Allowed model IDs').fill('test-model, second-model');
   await page.getByRole('button', { name: 'Save route', exact: true }).click();
   await page.getByText('test-model · second-model', { exact: true }).waitFor();

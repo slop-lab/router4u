@@ -46,29 +46,6 @@ Paste the callback URL, then send EOF. Do not save authorization codes in a comm
 
 The backend owns OAuth state, PKCE, token exchange, credential persistence, and refresh. Router4u does not run another refresh loop.
 
-## Bind Sign in with ChatGPT
-
-The pinned backend requires an existing Codex credential before SIWC binding. The stopped-backend procedure below is a Router4u integration precaution, not an inherent OAuth constraint; see [the authentication comparison](authentication-comparison.md). Identify its filename with `accounts`. Pause, drain active work, and stop the relevant backend before binding:
-
-```sh
-./router4u cli pause
-./router4u cli api /admin/active
-./router4u cli occupancy
-./router4u stop backend
-./router4u run --rm --no-deps backend -config /config/cliproxyapi.yaml -siwc-bind NAME.json -no-browser -local-model
-./router4u up -d backend
-```
-
-Complete the backend's printed browser instructions. Set the corresponding route's `profile` to `chatgpt`, keep `protocols` as `["responses"]`, and reload Router4u. Use `stream:true`, `store:false`, and self-contained input arrays. Backend credential metadata does not expose the SIWC mode flag; inspect the local file's `use_siwc` boolean without displaying tokens when confirming a binding:
-
-```sh
-./router4u exec backend node -e 'const f=require("node:fs"); const c=JSON.parse(f.readFileSync("/auth/NAME.json","utf8")); console.log({type:c.type,use_siwc:c.use_siwc===true,has_siwc_access:!!c.siwc?.access_token,has_siwc_refresh:!!c.siwc?.refresh_token})'
-./router4u cli reload
-./router4u cli resume
-```
-
-These commands establish a local configuration, not proof of live entitlement or working provider inference. Follow the live validation checklist in `validation.md`.
-
 ## Authorize an application
 
 Edit `.runtime/project.json`, then apply it and issue a key:
@@ -100,7 +77,9 @@ sh scripts/add-partition.sh work MODEL codex
 
 The helper creates `.runtime/partitions/work/`, generates separate backend/management keys, adds a `work` route, and writes `.runtime/partitions.compose.yaml`. It does not copy provider keys or credentials from the original partition. Compose recreates the gateway when its environment changes; existing ledger and project keys survive. Pause/drain before this planned restart if active streams must finish.
 
-For API-key providers, choose `api_key`, edit the partition's backend configuration using the pinned CLIProxyAPI v8 schema, and restart that backend. Provider keys belong only in the private backend configuration. For a ChatGPT binding in this partition, use `backend-work` in the SIWC commands above.
+For API-key providers, choose `api_key`, edit the partition's backend configuration using the pinned CLIProxyAPI v8 schema, and restart that backend. Provider keys belong only in the private backend configuration.
+
+If browser settings are active, the saved SQLite configuration still takes precedence over the file changed by the helper. Add the generated route through Connections using its generated environment-variable names, or first export your browser configuration into the installation file and then explicitly reload that file after the helper runs. Do not reload a stale file and discard unrelated browser edits.
 
 Grant the new route only to intended projects by editing and applying their project policies. To record a stable exclusive account identity, add this entry to gateway `accounts` after learning the credential filename:
 

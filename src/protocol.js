@@ -1,9 +1,5 @@
 import { ServiceError, requireValue } from './errors.js';
 
-const unsupportedChatGPTFields = ['background', 'conversation', 'max_output_tokens', 'max_tool_calls', 'metadata',
-  'moderation', 'multi_agent', 'prompt', 'prompt_cache_retention', 'safety_identifier', 'temperature', 'top_logprobs',
-  'top_p', 'truncation', 'user', 'previous_response_id'];
-
 export function validatePayload(payload, route, protocol) {
   requireValue(payload && typeof payload === 'object' && !Array.isArray(payload), 'Expected a JSON object');
   requireValue(typeof payload.model === 'string' && route.models.includes(payload.model), 'Model is not allowed on this route');
@@ -12,20 +8,6 @@ export function validatePayload(payload, route, protocol) {
     throw new ServiceError(400, 'unsupported_capability', 'Persistent continuation and background execution are unavailable; send complete input history');
   }
   requireValue(payload.stream === undefined || typeof payload.stream === 'boolean', 'stream must be boolean');
-  if (route.profile === 'chatgpt') {
-    if (payload.store !== false || payload.stream !== true || !Array.isArray(payload.input)) {
-      throw new ServiceError(400, 'unsupported_capability', 'ChatGPT plan Responses requires store:false, stream:true, and an input array');
-    }
-    for (const field of unsupportedChatGPTFields) {
-      if (field in payload) throw new ServiceError(400, 'unsupported_capability', `ChatGPT plan Responses does not support ${field}`);
-    }
-    if (payload.input.some(item => item?.role === 'system')) throw new ServiceError(400, 'unsupported_capability', 'Use instructions or developer messages on ChatGPT plan routes');
-    if (payload.tools !== undefined) {
-      requireValue(Array.isArray(payload.tools), 'tools must be an array');
-      const supported = new Set(['namespace', 'web_search', 'web_search_preview']);
-      if (payload.tools.some(tool => !supported.has(tool?.type))) throw new ServiceError(400, 'unsupported_capability', 'ChatGPT plan tools must use supported namespaces or web search');
-    }
-  }
 }
 
 export function normalizeUsage(raw) {

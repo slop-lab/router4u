@@ -103,17 +103,13 @@ test('Key rotation preserves usage; revocation and pause block future admissions
   assert.equal((await setup.call('/v1/responses', { key: newKey.key, body: payload })).status, 403);
 });
 
-test('ChatGPT profile preserves native Responses and rejects preview-incompatible parameters', async context => {
-  const setup = await fixture(context, { profile: 'chatgpt' });
-  for (const change of [{ stream: false }, { store: true }, { input: 'text' }, { max_output_tokens: 12 }, { temperature: 1 }, { tools: [{ type: 'file_search' }] }]) {
-    const response = await setup.call('/v1/responses', { body: { ...payload, ...change } });
-    assert.equal(response.status, 400);
-  }
-  assert.equal(setup.backend.calls.length, 0);
+test('Codex profile preserves native Responses for project clients', async context => {
+  const setup = await fixture(context, { profile: 'codex' });
   const response = await setup.call('/v1/responses', { body: payload });
   assert.equal(response.status, 200);
   await response.text();
   assert.equal(setup.backend.calls[0].url, '/v1/responses');
+  assert.deepEqual(setup.backend.calls[0].body, payload);
 });
 
 test('Deadline ends a hanging request without silently releasing its allowance', async context => {

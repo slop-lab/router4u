@@ -17,7 +17,6 @@ Pinned versions:
 
 The backend suite exercises the actual released executable. It proves native `/v1/responses` forwarding through its Codex executor to a fake upstream, a single observed failed attempt for the configured compatible-provider route, v8 management schemas, PKCE login initiation, and local usage/capture. It does not complete a real browser login or exchange a real authorization code.
 
-The ChatGPT CLI test supplies a fake executable to verify delegation, exact arguments, credential persistence checks, failure detection, and absence of token output. The genuine `-siwc-bind` flag and credential/executor paths were inspected in the pinned source and binary. This establishes implementation compatibility, not a live SIWC authentication test.
 
 ## Recorded validation run
 
@@ -31,7 +30,7 @@ Both runtime Docker images built successfully. The deployment suite also passed 
 |---|---|
 | Protocols | HTTP Responses and Chat Completions, per-route allowlists |
 | Streaming | Ordered application-body SSE, incremental delivery and durable capture |
-| ChatGPT plan Responses | Native Responses with validated preview constraints; live account validation pending |
+| Codex Responses | Native Responses client contract tested; live account validation pending |
 | Legacy Codex OAuth | Backend-managed login start, callback, status; live account validation pending |
 | Credential refresh | CLIProxyAPI owns it; no second gateway refresher; real rotation not tested here |
 | Account isolation | Dedicated partitions; optional verified exclusive file-backed binding |
@@ -57,13 +56,13 @@ The original architecture's scenario IDs are retained here for traceability. A l
 | A02 | Key rotation/revocation test preserves shared project usage. |
 | A03 | Project spoofing, cross-project reads/cancellation, unknown routes rejected; persistent continuation disabled. |
 | A04 | Project-to-route allowlists and dedicated partitions; exclusive-binding verification rejects unverified account configurations. Real account scheduling remains a live partition check. |
-| A05 | Single backend credential lifecycle owner and stopped-backend SIWC binding; real token expiry/concurrent refresh belongs to live verification. |
+| A05 | Single backend credential lifecycle owner; real token expiry/concurrent refresh belongs to live verification. |
 | A06 | Concurrent HTTP requests compete for the final allowance; one commits. Shared service budget is applied across projects. |
 | A07 | Strict token policy rejected explicitly. |
 | A08 | Cancellation, missing usage, early EOF, and terminal failure preserve independent state families. |
 | A09 | Gateway makes no automatic retry. Settlement and stable source/event corrections are idempotent; undispatched observable-attempt reservations are released. Internal multiple attempts are explicitly unobserved, so full internal-attempt accounting is excluded. |
 | A10 | Cache/reasoning subsets are not double-counted; invalid/conflicting totals remain unknown. |
-| A11 | Real pi/AI SDK text streaming for both protocols; raw partial tool arguments, tool IDs, repeated context, opaque fields, and multimodal references round-trip in deterministic fixtures. ChatGPT constraints reject incompatible fields. Actual provider-specific multimodal/tool capabilities require route-specific live checks. |
+| A11 | Real pi/AI SDK text streaming for both protocols; raw partial tool arguments, tool IDs, repeated context, opaque fields, and multimodal references round-trip in deterministic fixtures. Actual provider-specific multimodal/tool capabilities require route-specific live checks. |
 | A12 | Original request/stream bytes, token-like strings, and executable-looking text round-trip unchanged. |
 | A13 | Manifests label the client application boundary and excluded upstream/header/remote-URL data. |
 | A14 | Required and best-effort storage exhaustion before dispatch and during streaming tested. |
@@ -76,7 +75,7 @@ The original architecture's scenario IDs are retained here for traceability. A l
 
 ## Live validation checklist
 
-Use your own eligible account. Complete Codex OAuth, then separately bind SIWC if testing ChatGPT plan usage. Confirm `profile` and backend credential mode match, run `doctor`, select an available model, issue an application key, and run the explicit live smoke script. Inspect the request's execution, usage quality, capture boundary, and actual provider behavior.
+Use your own eligible account. Complete Codex OAuth for the intended backend partition. Confirm `profile` and backend credential mode match, run `doctor`, select an available model, issue an application key, and run the explicit live smoke script. Inspect the request's execution, usage quality, capture boundary, and actual provider behavior.
 
 After a successful first request, verify application restart without login, backend restart without credential loss, account-specific reauthorization, and token refresh when applicable. Exercise real cancellation cautiously and inspect any remaining usage. These steps can consume quota. Do not call a route production-verified until the relevant live checks pass.
 
@@ -104,9 +103,9 @@ The median increment was approximately 3.30 ms on this host. Capture work averag
 
 ## Remaining provider-dependent or excluded capabilities
 
-Real Codex/SIWC token exchange, entitlement, refresh rotation, provider tools/modalities, real quota semantics, and cancellation after upstream consumption still require explicit live checks. Credential restoration uses inert fixtures and cannot prove that an old rotating token will remain accepted.
+Real Codex token exchange, entitlement, refresh rotation, provider tools/modalities, real quota semantics, and cancellation after upstream consumption still require explicit live checks. Credential restoration uses inert fixtures and cannot prove that an old rotating token will remain accepted.
 
-The pinned management metadata does not expose SIWC credential mode; operators can inspect only the local boolean/presence flags using the documented Docker command. Full hidden-attempt journaling, translated upstream capture, strict token ceilings, stateful continuation, additional transports, distributed workers, monetary estimates, and an application/agent control plane are not enabled. The architecture permits these narrower capabilities when their limits are explicit. These exclusions must not be represented as live-verified implementations.
+Full hidden-attempt journaling, translated upstream capture, strict token ceilings, stateful continuation, additional transports, distributed workers, monetary estimates, and an application/agent control plane are not enabled. The architecture permits these narrower capabilities when their limits are explicit. These exclusions must not be represented as live-verified implementations.
 
 ## Web administration acceptance (2026-10-14)
 
@@ -116,4 +115,10 @@ Run `npm ci` followed by `npm run test:browser` for the actual Chromium smoke te
 
 The real Compose deployment test additionally confirmed that the production image serves the web UI, accepts an operator session and CSRF-authenticated settings save, and retains browser settings across automatic `unless-stopped` crash restart and full installation backup/restore. Existing project network isolation and unknown-usage recovery checks also passed.
 
-No live provider authentication, SIWC token exchange, actual quota comparison, or real credential refresh was performed. The authentication comparison is based on fetched official documentation and the pinned backend source, not provider execution.
+No live provider authentication, SIWC token exchange, actual quota comparison, or real credential refresh was performed. The earlier authentication comparison was based on fetched official documentation and pinned source, not provider execution; its retention decision has since been superseded by SIWC removal.
+
+## SIWC removal acceptance (2026-10-14)
+
+The supported profiles are now `codex` and `api_key`. The offline suite passes 61 tests, including rejection of retired profiles through configuration validation and browser settings, rejection of the removed CLI command without altering an inert existing credential, and Responses streaming through Codex-profile fixtures with Vercel AI SDK and pi-ai. Chromium confirms that only the supported profiles are selectable and the administration workflow remains functional. The Compose suite confirms additional partition provisioning, project isolation, crash restart, and backup/restore after removal.
+
+These are offline/local contracts, not live Codex entitlement or refresh verification. Multiple-account backend support remains in scope; the complete browser-only account provisioning workflow remains an explicit implementation gap.

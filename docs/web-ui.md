@@ -22,7 +22,7 @@ Once saved in the browser, mutable configuration from SQLite takes precedence ov
 
 **Reload installation file** (or the existing CLI `reload`) explicitly replaces the browser override with the validated file configuration. A dry run does not change the active source. Download the active configuration before switching if you want to keep browser edits. Reload rejects removed routes still referenced by projects and account identity changes.
 
-The UI never saves upstream tokens. Route key fields contain environment-variable names, not their secret values. Secret provisioning, backend container creation, and SIWC binding remain deployment/backend tasks.
+The UI never saves upstream tokens. Route key fields contain environment-variable names, not their secret values. Secret provisioning and backend container creation remain deployment/backend tasks.
 
 ## Authentication boundaries
 
@@ -32,7 +32,9 @@ Use localhost or HTTPS for administration. HTTPS-origin login adds Secure to the
 
 ## Current limits and release scope
 
-SIWC remains supported because it offers the documented public Responses integration described in [the authentication comparison](authentication-comparison.md). Its stopped-backend binding procedure is an integration constraint, not a protocol requirement. The control room does not yet initiate SIWC binding; follow [the existing backend procedure](docker.md#bind-sign-in-with-chatgpt). Codex sign-in is available in the browser.
+Codex sign-in is available in the browser. The separate SIWC binding has been removed; see [migration guidance](authentication.md#migration-from-the-retired-siwc-profile).
+
+Multiple accounts are a design requirement. The current UI can log in to existing partitions and edit project route authorization, but it does not create backend containers or provide a complete account-add wizard. Prepare isolated accounts with [the partition workflow](docker.md#add-another-account-or-provider-partition); register exclusive account metadata in Settings when exact account eligibility is needed.
 
 The existing repository Compose deployment remains the installation mechanism for this change. Docker Hub publication and a `curl ... | sh` installer are deferred; no public image name or working installer URL is claimed. Both long-running Compose services retain `restart: unless-stopped`.
 

@@ -64,7 +64,7 @@ export async function fixture(context, { handler, policy = {}, profile = 'api_ke
   const directory = mkdtempSync(join(tmpdir(), 'router4u-test-'));
   const backend = await fakeProvider(handler);
   const config = { data_dir: directory, port: 0, routes: [{ id: 'local', profile, base_url: backend.url,
-    key_env: 'TEST_BACKEND_KEY', models: ['test-model'], protocols: profile === 'chatgpt' ? ['responses'] : ['responses', 'chat'] }], ...overrides };
+    key_env: 'TEST_BACKEND_KEY', models: ['test-model'], protocols: ['responses', 'chat'] }], ...overrides };
   const gateway = createGateway(config, { environment: { ROUTER4U_ADMIN_KEY: adminKey, TEST_BACKEND_KEY: backendKey } });
   gateway.store.putProject('alpha', { routes: ['local'], ...policy });
   gateway.store.putProject('beta', { routes: ['local'] });

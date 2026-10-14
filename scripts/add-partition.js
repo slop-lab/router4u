@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from '
 import { randomBytes } from 'node:crypto';
 process.umask(0o077);
 const [id, model, profile = 'codex'] = process.argv.slice(2);
-if (!/^[a-z][a-z0-9-]{0,31}$/.test(id ?? '') || !model || !['codex', 'chatgpt', 'api_key'].includes(profile)) throw new Error('Usage: add-partition.sh ID MODEL [codex|chatgpt|api_key]');
+if (!/^[a-z][a-z0-9-]{0,31}$/.test(id ?? '') || !model || !['codex', 'api_key'].includes(profile)) throw new Error('Usage: add-partition.sh ID MODEL [codex|api_key]');
 const config = JSON.parse(readFileSync('.runtime/router4u.json', 'utf8'));
 if (config.routes.some(route => route.id === id)) throw new Error('Route already exists');
 const keyName = `ROUTER4U_${id.toUpperCase().replaceAll('-', '_')}_BACKEND_KEY`; const managementName = `${keyName}_MANAGEMENT`;

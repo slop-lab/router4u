@@ -65,10 +65,9 @@ export function validateConfig(input) {
     validateOptionalLimits(route);
     requireValue(route.enabled === undefined || typeof route.enabled === 'boolean', 'Invalid route enabled flag');
     requireValue(Object.keys(route).every(key => ['id', 'profile', 'models', 'protocols', 'base_url', 'key_env', 'management_key_env', 'account_id', 'exclusive_account', 'credential_name', 'concurrency', 'enabled'].includes(key)), 'Unsupported route field');
-    requireValue(['api_key', 'codex', 'chatgpt'].includes(route.profile), 'Invalid route profile');
+    requireValue(['api_key', 'codex'].includes(route.profile), 'Unsupported route profile; use codex or api_key. For retired chatgpt profiles see docs/authentication.md');
     requireValue(Array.isArray(route.models) && route.models.length > 0 && route.models.every(model => typeof model === 'string' && model.length < 200), 'Explicit model allowlist is required');
     requireValue(Array.isArray(route.protocols) && route.protocols.length > 0 && route.protocols.every(protocol => ['responses', 'chat'].includes(protocol)), 'Invalid protocols');
-    requireValue(route.profile !== 'chatgpt' || route.protocols.every(protocol => protocol === 'responses'), 'ChatGPT plan routes only support Responses');
     requireValue(typeof route.key_env === 'string' && route.key_env.length > 0, 'Backend key environment variable is required');
     const backendURL = new URL(route.base_url);
     requireValue(['http:', 'https:'].includes(backendURL.protocol) && !backendURL.username && !backendURL.password && !backendURL.search && !backendURL.hash, 'Invalid backend URL');
@@ -126,7 +125,7 @@ export function capabilities(route) {
     protocols: route.protocols, streaming: true, cancellation: 'best_effort', token_enforcement: ['observe', 'estimate'],
     continuation: false, attempt_visibility: 'request_only', usage_visibility: 'backend_response',
     capture_boundary: 'client_application_body', account_selection: route.account_id ? 'verified_exclusive_partition' : 'backend_partition',
-    tool_representation: route.profile === 'chatgpt' ? 'namespaces_and_web_search' : 'native_protocol_passthrough',
+    tool_representation: 'native_protocol_passthrough',
     modalities: { text: 'offline_contract_tested', images: 'reference_passthrough_only', audio: 'unverified', video: 'unverified' },
     provider_verification: 'operator_live_validation_required', hidden_attempts: 'unavailable', translated_upstream_capture: false };
 }

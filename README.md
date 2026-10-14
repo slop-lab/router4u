@@ -2,7 +2,7 @@
 
 A shared, personal LLM access service with project identities, durable usage reservations, original exchange recording, and CLIProxyAPI-managed upstream accounts.
 
-Supports native HTTP Responses and Chat Completions. Sign in with ChatGPT and legacy Codex authentication are distinct supported operator workflows. All upstream OAuth and refresh remain in CLIProxyAPI. Applications use independent Router4u project keys.
+Supports native HTTP Responses and Chat Completions. Codex account OAuth and provider API-key connections are supported. All upstream OAuth and refresh remain in CLIProxyAPI. Applications use independent Router4u project keys.
 
 **Status:** runnable single-host implementation for personal live validation. Offline fault tests, pinned CLIProxyAPI contracts, and real pi/Vercel SDK clients are automated. A successful test against a fake provider does not establish live OAuth eligibility, quota, refresh behavior, or upstream cancellation. See [validation scope](docs/validation.md).
 
@@ -19,7 +19,7 @@ sh scripts/setup-docker.sh YOUR_ACCOUNT_MODEL codex
 
 Open **http://127.0.0.1:9470/** and sign in with the operator key from `.runtime/.env`. Use the [web control room](docs/web-ui.md) to connect Codex, configure routes, create projects and keys, inspect requests, and manage settings.
 
-Follow [Docker installation and account operations](docs/docker.md) for callback submission, ChatGPT binding, project keys, extra accounts, configuration reload, and complete backups. Both long-running services use `restart: unless-stopped`; state and credentials persist outside containers. Additional isolated accounts can be prepared with `sh scripts/add-partition.sh work YOUR_ACCOUNT_MODEL codex`.
+Follow [Docker installation and account operations](docs/docker.md) for callback submission, project keys, extra accounts, configuration reload, and complete backups. Both long-running services use `restart: unless-stopped`; state and credentials persist outside containers. Additional isolated accounts can be prepared with `sh scripts/add-partition.sh work YOUR_ACCOUNT_MODEL codex`.
 
 The initializer refuses to overwrite an existing installation. Default application keys cannot export transcripts; issue an explicit `exchange:export` principal when needed.
 
@@ -50,7 +50,7 @@ The demo creates two projects and a loopback fake provider. It preserves its SQL
 
 ## Connect your own account
 
-Read [the authentication guide](docs/authentication.md) for the complete Codex and ChatGPT login procedures, callback handling, and model selection.
+Read [the authentication guide](docs/authentication.md) for the Codex login procedure, callback handling, and model selection.
 
 ```sh
 npm run backend:install
@@ -74,7 +74,6 @@ node src/cli.js project put my-app --file examples/policy.json
 node src/cli.js project key my-app
 ```
 
-For ChatGPT plan usage, bind the separate ChatGPT credential and change the route profile to `chatgpt` as described in [the authentication guide](docs/authentication.md). `auth codex` alone creates a legacy Codex connection; it does not complete the separate public Responses authorization.
 
 To deliberately send one real request after setup:
 

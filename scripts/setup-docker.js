@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 process.umask(0o077);
 const model = process.argv[2];
 const profile = process.argv[3] ?? 'codex';
-if (!model || !['codex', 'chatgpt', 'api_key'].includes(profile)) throw new Error('Usage: setup-docker.sh MODEL [codex|chatgpt|api_key]');
+if (!model || !['codex', 'api_key'].includes(profile)) throw new Error('Usage: setup-docker.sh MODEL [codex|api_key]');
 for (const path of ['.runtime/.env', '.runtime/router4u.json', '.runtime/cliproxyapi.yaml']) if (existsSync(path)) throw new Error('Runtime already exists; refusing to overwrite it. See docs/docker.md for migration.');
 if (!existsSync('.tools/backend-lock.json')) await import('./install-backend.js');
 const lock = JSON.parse(readFileSync('.tools/backend-lock.json', 'utf8'));
@@ -22,7 +22,7 @@ writeFileSync('.runtime/project.json', JSON.stringify({ routes: ['personal'], re
 writeFileSync('.runtime/cliproxyapi.yaml', JSON.stringify({ 'config-version': 8,
   server: { host: '0.0.0.0', port: 8317, 'max-request-body-bytes': 2097152 },
   management: { 'allow-remote': true, 'secret-key': management, 'disable-control-panel': true },
-  access: { 'api-keys': [backend] }, oauth: { 'auth-dir': '/auth', providers: { codex: { 'signin-with-chatgpt-identifier': 'router4u' } } },
+  access: { 'api-keys': [backend] }, oauth: { 'auth-dir': '/auth' },
   routing: { strategy: 'fill-first', retry: { 'request-retry': 0, 'max-retry-credentials': 1, 'max-retry-interval': 0 } },
   requests: { streaming: { 'bootstrap-retries': 0 } }, observability: { logs: { 'request-log': false, 'error-logs-max-files': 1 }, usage: { 'usage-statistics-enabled': false } } }, null, 2) + '\n');
 console.log('Docker configuration initialized. Run ./router4u up -d --build, then follow docs/docker.md. Credentials were not printed.');

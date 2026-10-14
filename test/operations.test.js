@@ -88,32 +88,19 @@ test('CLI initializes protected configuration and refuses credential overwrite',
   assert.equal(readFileSync(secretFile, 'utf8'), original);
 });
 
-test('ChatGPT CLI delegates binding, validates persisted results, and does not print credentials', async context => {
+test('Retired SIWC profiles and commands reject without mutating credentials', async context => {
   const directory = temporary(context);
   const cli = resolve('src/cli.js');
-  execFileSync(process.execPath, [cli, 'init', '--profile', 'chatgpt'], { cwd: directory });
-  const configFile = join(directory, '.runtime/router4u.json');
-  const config = JSON.parse(readFileSync(configFile));
-  config.routes[0].base_url = 'http://127.0.0.1:1/v1';
-  writeFileSync(configFile, JSON.stringify(config));
+  execFileSync(process.execPath, [cli, 'init', '--profile', 'codex'], { cwd: directory });
+  const config = JSON.parse(readFileSync(join(directory, '.runtime/router4u.json')));
+  assert.throws(() => validateConfig({ ...config, routes: [{ ...config.routes[0], profile: 'chatgpt' }] }), /Unsupported route profile/);
   const credentialPath = join(directory, '.runtime/auth/owner.json');
-  writeFileSync(credentialPath, JSON.stringify({ type: 'codex', access_token: 'inert-codex-access', refresh_token: 'inert-codex-refresh' }));
-  const executable = join(directory, 'fake-backend');
-  writeFileSync(executable, `#!${process.execPath}\nimport fs from 'node:fs';
-    const args=process.argv.slice(2);
-    fs.writeFileSync('.runtime/arguments.json',JSON.stringify(args));
-    const path='.runtime/auth/'+args[args.indexOf('-siwc-bind')+1];
-    const record=JSON.parse(fs.readFileSync(path));
-    record.use_siwc=true;
-    record.siwc={access_token:'inert-new-siwc-access',refresh_token:'inert-new-siwc-refresh',client_id:'test-client'};
-    fs.writeFileSync(path,JSON.stringify(record));\n`, { mode: 0o700 });
-  const args = [cli, 'auth', 'chatgpt', '--credential', 'owner.json', '--backend-bin', executable];
-  const output = execFileSync(process.execPath, args, { cwd: directory, encoding: 'utf8' });
-  assert.match(output, /ChatGPT credential persisted/);
-  assert.doesNotMatch(output, /inert-new/);
-  assert.ok(JSON.parse(readFileSync(join(directory, '.runtime/arguments.json'))).includes('-siwc-bind'));
-  writeFileSync(executable, `#!${process.execPath}\nprocess.exit(0);\n`, { mode: 0o700 });
-  assert.throws(() => execFileSync(process.execPath, args, { cwd: directory, stdio: 'pipe' }));
+  const original = '{"type":"codex","use_siwc":true,"siwc":{"access_token":"inert-retired-token"}}';
+  writeFileSync(credentialPath, original);
+  assert.throws(() => execFileSync(process.execPath, [cli, 'auth', 'chatgpt'], { cwd: directory, stdio: 'pipe' }), /Use auth codex/);
+  assert.equal(readFileSync(credentialPath, 'utf8'), original);
+  const help = execFileSync(process.execPath, [cli, '--help'], { cwd: directory, encoding: 'utf8' });
+  assert.doesNotMatch(help, /chatgpt|siwc|backend-bin|credential/);
 });
 
 test('Management metadata strips credentials and OAuth callback rejects external URLs', async context => {

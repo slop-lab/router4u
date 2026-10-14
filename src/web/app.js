@@ -61,7 +61,7 @@ async function editProject(project, routes) {
 }
 async function editRoute(route, snapshot) {
   const id = input(route?.id ?? '', { required: '', pattern: '[A-Za-z0-9_-]{1,64}', placeholder: 'personal' }); if (route) id.disabled = true;
-  const profile = el('select', {}, ...[['codex', 'Codex account'], ['chatgpt', 'ChatGPT plan · public Responses'], ['api_key', 'Provider API key']].map(([value, name]) => el('option', { value }, name))); profile.value = route?.profile ?? 'codex';
+  const profile = el('select', {}, ...[['codex', 'Codex account'], ['api_key', 'Provider API key']].map(([value, name]) => el('option', { value }, name))); profile.value = route?.profile ?? 'codex';
   const base = input(route?.base_url ?? 'http://backend:8317/v1', { required: '', type: 'url' });
   const models = input(route?.models.join(', ') ?? '', { required: '', placeholder: 'Model IDs, separated by commas' });
   const key = input(route?.key_env ?? 'ROUTER4U_BACKEND_KEY', { required: '' });
@@ -104,7 +104,7 @@ const pages = {
           try { const parsed = new URL(authURL); if (parsed.protocol === 'https:') link = el('a', { href: parsed.href, target: '_blank', rel: 'noopener noreferrer' }, 'Open provider sign-in ↗'); } catch {}
           modal('Connect your Codex account', muted('Complete sign-in in a new tab. If the localhost callback does not load, paste the full callback URL below. Do not share it.'), link ?? muted('No valid HTTPS authorization URL was returned.'), field('Callback URL', callback), row(action('Submit callback', async () => { const value = callback.value; callback.value = ''; const response = await api(`/admin/backends/${route.id}/callback`, 'POST', { redirect_url: value }); notify(response.status ?? 'Callback submitted'); }), action('Check status', async () => notify(JSON.stringify(await api(`/admin/backends/${route.id}/status?state=${encodeURIComponent(result.state ?? '')}`))))));
         })] : [])
-      ), route.profile === 'chatgpt' ? muted('ChatGPT plan → public Responses API. The pinned backend exposes SIWC binding as a CLI command. Router4u currently requires stopping that backend during binding; this is an integration constraint, not an OAuth requirement. Existing bindings work here.') : null))),
+      )))),
       card(heading('Account registry'), accounts.length ? table(['Account', 'Route', 'State', 'Actions'], accounts.map(account => [account.id, account.route_id, account.status ?? 'Not inspected', row(...['inspect', 'refresh', 'disable', 'enable', 'remove'].map(operation => action(operation, async () => { if (operation === 'remove' && !confirm(`Remove credential for ${account.id}?`)) return; modal(`${account.id} · ${operation}`, pretty(await api(`/admin/accounts/${account.id}/${operation}`, operation === 'inspect' ? 'GET' : 'POST', operation === 'inspect' ? undefined : {}))); })))])) : muted('No accounts registered for exclusive attribution. Add account metadata and an exclusive route in Settings. Credential changes require paused admissions and no active or uncertain work.'))];
   },
   async projects() {

@@ -26,7 +26,7 @@ for await (const text of result.textStream) process.stdout.write(text);
 await result.finishReason;
 ```
 
-On ChatGPT plan routes, use streaming Responses and omit unsupported provider fields such as `maxOutputTokens` and temperature. Agent tool definitions must follow the current ChatGPT plan tool contract; SDK availability of a tool does not establish backend support. A normal API-key route may use `provider.chat(model)` for Chat Completions.
+On Codex routes, use the route’s advertised protocols and verify model-specific request parameters and tools against the backend. SDK availability of a tool does not establish provider support. A normal API-key route may use `provider.chat(model)` for Chat Completions.
 
 ## pi-ai
 
@@ -72,11 +72,11 @@ const result = await stream.result();
 if (result.stopReason === 'error' || result.stopReason === 'aborted') throw new Error('Inference did not complete');
 ```
 
-Set model metadata to the actual model's capabilities. Zero cost metadata above is an example placeholder, not a subscription billing estimate. The pinned pi Responses implementation sends `store:false` and streams. For ChatGPT plan routes, do not supply the request option `maxTokens`, which emits the unsupported `max_output_tokens` field. Tools and agent loops remain application-owned.
+Set model metadata to the actual model's capabilities. Zero cost metadata above is an example placeholder, not a subscription billing estimate. The pinned pi Responses implementation sends `store:false` and streams. Tools and agent loops remain application-owned.
 
 ## Codex as an application client
 
-Codex authentication managed by the backend is separate from configuring a Codex client to call Router4u. A Responses-compatible Codex provider can use the gateway URL and project key. Disable unsupported WebSocket/continuation behavior and verify the exact client version's request contract before using it against a ChatGPT plan route. This repository tests HTTP SDK clients, not a complete Codex app-server agent session.
+Codex authentication managed by the backend is separate from configuring a Codex client to call Router4u. A Responses-compatible Codex provider can use the gateway URL and project key. Disable unsupported WebSocket/continuation behavior and verify the exact client version's request contract before using it against a Codex route. This repository tests HTTP SDK clients, not a complete Codex app-server agent session.
 
 ## Retry responsibility
 

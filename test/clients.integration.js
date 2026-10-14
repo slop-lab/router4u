@@ -8,7 +8,7 @@ import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completio
 import { fixture } from './helpers.js';
 
 test('Vercel AI SDK streams native Responses using a project credential', async context => {
-  const setup = await fixture(context, { profile: 'chatgpt' });
+  const setup = await fixture(context, { profile: 'codex' });
   const openai = createOpenAI({ baseURL: `${setup.url}/v1`, apiKey: setup.alpha.key });
   const result = streamText({ model: openai.responses('test-model'), prompt: 'Hello', maxRetries: 0,
     providerOptions: { openai: { store: false } } });
@@ -27,7 +27,7 @@ test('Vercel AI SDK uses Chat Completions without a gateway SDK', async context 
 
 for (const protocol of ['responses', 'chat']) {
   test(`pi-ai streams ${protocol} through a custom provider`, async context => {
-    const setup = await fixture(context, { profile: protocol === 'responses' ? 'chatgpt' : 'api_key' });
+    const setup = await fixture(context, { profile: protocol === 'responses' ? 'codex' : 'api_key' });
     const api = protocol === 'responses' ? 'openai-responses' : 'openai-completions';
     const model = { id: 'test-model', name: 'Router4u test model', api, provider: 'router4u', baseUrl: `${setup.url}/v1`,
       reasoning: false, input: ['text'], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 32000, maxTokens: 4096 };
