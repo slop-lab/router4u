@@ -272,7 +272,7 @@ export function createGateway(input, options = {}) {
         if (path === '/v1/effective-policy' && method === 'GET') return json(response, 200, effectivePolicy(store, config, principal.project_id));
         if (path === '/v1/models' && method === 'GET') {
           const project = store.project(principal.project_id);
-          const models = [...new Set(config.routes.filter(route => project.policy.routes.includes(route.id)).flatMap(route => route.models))];
+          const models = [...new Set(config.routes.filter(route => route.enabled !== false && project.policy.routes.includes(route.id)).flatMap(route => route.models))];
           return json(response, 200, { object: 'list', data: models.map(id => ({ id, object: 'model', created: 0, owned_by: 'router4u' })) });
         }
         if (path === '/v1/capabilities' && method === 'GET') {

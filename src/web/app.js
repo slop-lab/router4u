@@ -63,14 +63,27 @@ async function editRoute(route, snapshot) {
   const id = input(route?.id ?? '', { required: '', pattern: '[A-Za-z0-9_-]{1,64}', placeholder: 'personal' }); if (route) id.disabled = true;
   const profile = el('select', {}, ...[['codex', 'Codex account'], ['api_key', 'Provider API key']].map(([value, name]) => el('option', { value }, name))); profile.value = route?.profile ?? 'codex';
   const base = input(route?.base_url ?? 'http://backend:8317/v1', { required: '', type: 'url' });
-  const models = input(route?.models.join(', ') ?? '', { required: '', placeholder: 'Model IDs, separated by commas' });
+  const models = input(route?.models.join(', ') ?? '', { placeholder: 'Choose models below, or enter IDs separated by commas' });
   const key = input(route?.key_env ?? 'ROUTER4U_BACKEND_KEY', { required: '' });
   const management = input(route?.management_key_env ?? 'ROUTER4U_BACKEND_MANAGEMENT_KEY');
   const protocols = el('select', {}, el('option', { value: 'responses' }, 'Responses'), el('option', { value: 'responses,chat' }, 'Responses and Chat Completions')); protocols.value = route?.protocols.join(',') ?? 'responses';
-  const form = el('form', {}, muted('Connect to an existing backend. Provider credentials stay in CLIProxyAPI; the fields below reference environment variables already configured on Router4u.'), field('Route ID', id), field('Authentication profile', profile), field('Backend base URL', base), field('Allowed model IDs', models), field('Client protocols', protocols), field('Backend key environment variable', key), field('Management key environment variable', management), el('button', {}, 'Save route'));
+  const enabled = el('select', {}, el('option', { value: 'false' }, 'Disabled · setup or maintenance'), el('option', { value: 'true' }, 'Enabled · accept requests'));
+  enabled.value = route && route.enabled !== false ? 'true' : 'false';
+  const discovery = el('div');
+  const discover = route ? action('Load available models', async () => {
+    const available = await api(`/admin/backends/${route.id}/models`);
+    const ids = [...new Set(available.map(model => typeof model === 'string' ? model : model.id ?? model.slug).filter(id => typeof id === 'string' && id.trim()))];
+    if (!ids.length) { discovery.replaceChildren(muted('No models returned. Complete account sign-in or configure the provider first, then try again.')); return; }
+    const selected = new Set(models.value.split(',').map(id => id.trim()));
+    const choices = el('select', { multiple: '', size: String(Math.min(8, Math.max(2, ids.length))) }, ...ids.map(id => { const option = el('option', { value: id }, id); option.selected = selected.has(id); return option; }));
+    discovery.replaceChildren(field('Available models', choices), action('Use selected models', () => { models.value = [...choices.selectedOptions].map(option => option.value).join(', '); }), muted('Selection updates the allowlist above. Enable the connection and save to apply. Model discovery alone does not prove live access.'));
+  }) : muted('Save the disabled connection first, then sign in and load its available models.');
+  const details = el('details', {}, el('summary', {}, 'Backend connection settings'), field('Authentication profile', profile), field('Backend base URL', base), field('Client protocols', protocols), field('Backend key environment variable', key), field('Management key environment variable', management));
+  if (!route) details.open = true;
+  const form = el('form', {}, muted('Connect your account first, then choose which models your applications may use. Inference remains disabled until you select models and enable this connection.'), field('Route ID', id), field('Allowed model IDs', models), discover, discovery, field('Connection status', enabled), details, el('button', {}, 'Save route'));
   form.addEventListener('submit', async event => { event.preventDefault(); try {
     const { revision, ...config } = snapshot.config;
-    const next = { ...route, id: id.value, profile: profile.value, base_url: base.value, models: models.value.split(',').map(s => s.trim()).filter(Boolean), protocols: protocols.value.split(','), key_env: key.value };
+    const next = { ...route, id: id.value, profile: profile.value, enabled: enabled.value === 'true', base_url: base.value, models: models.value.split(',').map(s => s.trim()).filter(Boolean), protocols: protocols.value.split(','), key_env: key.value };
     if (management.value.trim()) next.management_key_env = management.value.trim(); else delete next.management_key_env;
     config.routes = route ? config.routes.map(r => r.id === route.id ? next : r) : [...config.routes, next];
     await api('/admin/config', 'PUT', { revision: snapshot.revision, config }); $('#detail').close(); notify('Route saved'); await render();
@@ -82,8 +95,8 @@ const pages = {
     const [metrics, projects, config, status, alerts] = await Promise.all(['/admin/metrics', '/admin/projects', '/admin/config', '/admin/web-status', '/admin/alerts'].map(path => api(path)));
     const stats = [['Requests', metrics.requests], ['Settled tokens', metrics.settled_tokens], ['Active requests', metrics.active ?? 0], ['Projects', projects.length]];
     return [el('div', { class: 'grid stats' }, ...stats.map(([label, value]) => card(el('span', { class: 'muted' }, label), el('div', { class: 'stat' }, Number(value).toLocaleString())))),
-      card(row(heading('Admissions'), el('span', { class: 'badge' }, status.paused ? 'Paused' : 'Accepting requests')), muted('Pause new work while you maintain accounts. Existing work continues until completed or cancelled.'), action(status.paused ? 'Resume admissions' : 'Pause admissions', async () => { await api('/admin/pause', 'POST', { paused: !status.paused }); await render(); })),
-      card(heading('Make yourself at home'), el('div', { class: 'steps' }, ...[['connections', 'Connect an account', `${config.config.routes.length} configured routes. Inspect authentication and available models.`], ['projects', 'Give your application a key', 'Choose its routes and limits, then copy a project key.'], ['requests', 'Follow your first request', 'See what completed, what was recorded, and what remains uncertain.']].map(([page, title, text]) => el('div', { class: 'step' }, el('div', {}, el('a', { href: `#${page}` }, title), muted(text)))))),
+      card(row(heading('Admissions'), el('span', { class: 'badge' }, status.paused ? 'Paused' : config.config.routes.some(route => route.enabled !== false) ? 'Accepting requests' : 'Setup required')), muted('Pause new work while you maintain accounts. Existing work continues until completed or cancelled.'), action(status.paused ? 'Resume admissions' : 'Pause admissions', async () => { await api('/admin/pause', 'POST', { paused: !status.paused }); await render(); })),
+      card(heading('Make yourself at home'), el('div', { class: 'steps' }, ...[['connections', 'Connect an account', `${config.config.routes.filter(route => route.enabled !== false).length} enabled connections. Sign in, choose models, and enable a connection.`], ['projects', 'Give your application a key', 'Choose its routes and limits, then copy a project key.'], ['requests', 'Follow your first request', 'See what completed, what was recorded, and what remains uncertain.']].map(([page, title, text]) => el('div', { class: 'step' }, el('div', {}, el('a', { href: `#${page}` }, title), muted(text)))))),
       card(heading('Needs attention'), alerts.length ? table(['Alert', 'Details'], alerts.map(item => [item.kind, JSON.stringify(item)])) : muted('No local operational alerts. Provider reachability has not been verified.')),
       muted('Usage is request-only. Unknown provider consumption is retained separately; local token estimates are not provider quota.')];
   },
@@ -92,12 +105,12 @@ const pages = {
     const { config } = snapshot;
     return [el('div', { class: 'warning' }, 'Personal use only. Connect only accounts you own and use them yourself. You are responsible for complying with each provider’s terms and plan restrictions. Technical support does not grant permission to share account access.'),
       card(heading('Upstream connections'), muted('CLIProxyAPI owns sign-in, credential storage, and token refresh. Routes select an existing backend connection.'), action('Add route', () => editRoute(null, snapshot), 'primary')),
-      el('div', { class: 'grid' }, ...config.routes.map(route => card(row(heading(route.id), el('span', { class: 'badge' }, route.profile)), muted(route.models.join(' · ')), row(
-        action('Edit route', () => editRoute(route, snapshot)),
+      el('div', { class: 'grid' }, ...config.routes.map(route => card(row(heading(route.id), el('span', { class: 'badge' }, route.profile), el('span', { class: 'badge' }, route.enabled === false ? 'Disabled' : 'Enabled')), muted(route.models.length ? route.models.join(' · ') : 'No models selected. Connect your account, then set up models.'), row(
+        action(route.enabled === false ? 'Set up models' : 'Edit route', () => editRoute(route, snapshot)),
         action('Inspect', async () => modal(`${route.id} · Connection`, pretty(await api(`/admin/backends/${route.id}/inspect`)))),
         action('Models', async () => modal(`${route.id} · Models`, pretty(await api(`/admin/backends/${route.id}/models`)))),
         action('Credentials', async () => modal(`${route.id} · Credentials`, pretty(await api(`/admin/backends/${route.id}/credentials`)))),
-        ...(route.management_key_env ? [action('Connect Codex', async () => {
+        ...(route.management_key_env && route.profile === 'codex' ? [action('Connect Codex', async () => {
           const result = await api(`/admin/backends/${route.id}/login`, 'POST', {});
           const callback = input('', { placeholder: 'http://localhost:1455/auth/callback?…' });
           const authURL = result.url ?? result.auth_url; let link;

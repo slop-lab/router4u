@@ -15,7 +15,7 @@ const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   config: { type: 'string', default: '.runtime/router4u.json' }, route: { type: 'string', default: 'personal' },
   file: { type: 'string' }, scopes: { type: 'string' }, destination: { type: 'string' },
   'env-file': { type: 'string', default: '.runtime/.env' }, 'dry-run': { type: 'boolean' },
-  from: { type: 'string' }, to: { type: 'string' }, model: { type: 'string', default: 'test-model' },
+  from: { type: 'string' }, to: { type: 'string' }, model: { type: 'string' },
   'backend-config': { type: 'string', default: '.runtime/cliproxyapi.yaml' },
   'auth-dir': { type: 'string', default: '.runtime/auth' },
   profile: { type: 'string', default: 'codex' },
@@ -50,10 +50,10 @@ function init() {
   writeFileSync('.runtime/.env', `ROUTER4U_ADMIN_KEY=${operator}\nROUTER4U_BACKEND_KEY=${backend}\nROUTER4U_BACKEND_MANAGEMENT_KEY=${management}\n`, { mode: 0o600 });
   const config = { host: '127.0.0.1', port: 9470, data_dir: '.runtime/data', routes: [{ id: values.route, profile: values.profile,
     base_url: 'http://127.0.0.1:8317/v1', key_env: 'ROUTER4U_BACKEND_KEY', management_key_env: 'ROUTER4U_BACKEND_MANAGEMENT_KEY',
-    models: [values.model], protocols: values.profile === 'api_key' ? ['responses', 'chat'] : ['responses'] }] };
+    enabled: Boolean(values.model), models: values.model ? [values.model] : [], protocols: values.profile === 'api_key' ? ['responses', 'chat'] : ['responses'] }] };
   writeFileSync('.runtime/router4u.json', JSON.stringify(config, null, 2) + '\n', { mode: 0o600 });
   writeFileSync('.runtime/cliproxyapi.yaml', `config-version: 8\nserver:\n  host: "127.0.0.1"\n  port: 8317\n  max-request-body-bytes: 2097152\nmanagement:\n  allow-remote: false\n  secret-key: "${management}"\n  disable-control-panel: true\naccess:\n  api-keys: ["${backend}"]\noauth:\n  auth-dir: ${JSON.stringify(resolve('.runtime/auth'))}\nrouting:\n  strategy: "fill-first"\n  retry:\n    request-retry: 0\n    max-retry-credentials: 1\n    max-retry-interval: 0\nrequests:\n  streaming:\n    bootstrap-retries: 0\nobservability:\n  logs:\n    request-log: false\n    error-logs-max-files: 1\n  usage:\n    usage-statistics-enabled: false\n`, { mode: 0o600 });
-  print('Initialized .runtime. Read docs/authentication.md before connecting an account. Keep one account per backend partition.');
+  print('Initialized .runtime. Start the backend and gateway, then open http://127.0.0.1:9470/ to connect an account and choose models. Keep one account per backend partition.');
 }
 
 async function auth(command) {
@@ -71,7 +71,7 @@ async function main() {
   const [command, target] = positionals;
   if (values.help || !command) return print(`Router4u operator CLI (Node.js 24)
 
-init --model MODEL --profile codex|api_key
+init [--profile codex|api_key] [--model MODEL]
 serve [--config PATH]
 project put ID --file POLICY.json
 project key ID [--scopes inference,usage:read,requests:read,requests:cancel,exchange:export]

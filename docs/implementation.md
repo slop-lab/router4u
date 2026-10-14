@@ -34,3 +34,7 @@ Calendar day/month and rolling budgets support local request counts, estimated t
 ## Web administration
 
 The gateway serves a dependency-free browser UI and exchanges the operator key for a bounded, expiring HttpOnly session. Cookie-authenticated admin calls require same-origin validation and a CSRF header. Existing bearer authentication remains available to CLI automation. Browser settings use the same validators and a revision precondition, with configuration revisions and the saved override committed in one SQLite transaction. Read-only Docker configuration mounts remain supported. See [the web guide](web-ui.md).
+
+## Installation and account setup
+
+Docker bootstrap prepares infrastructure and a disabled `personal` connection without requiring a model or account. An empty model allowlist is valid only while a route is disabled. Operators sign in through CLIProxyAPI, discover/select model IDs in the browser, and explicitly enable the route. Discovery does not grant project authorization or establish real model entitlement. Existing configured installations retain their model choices. Additional partitions also start disabled and model-free; backend container provisioning remains a deployment task.

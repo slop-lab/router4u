@@ -23,12 +23,12 @@ Applications use their Router4u project key and `/v1/responses` or another proto
 
 For Docker, follow [the Docker guide](docker.md). Once installed, use the [web control room](web-ui.md) to start Codex login for a specific route. The equivalent local CLI workflow is:
 
-1. Run `node src/cli.js init --profile codex --model YOUR_ACCOUNT_MODEL`. Existing initialization is never overwritten.
+1. Run `node src/cli.js init`. This prepares a disabled connection with no models. Existing initialization is never overwritten.
 2. Start `.tools/cli-proxy-api -config .runtime/cliproxyapi.yaml -local-model` and `npm start` in separate terminals.
 3. Run `node src/cli.js auth codex`. Open its URL in your browser. CLIProxyAPI generates and checks OAuth state and PKCE.
 4. If the browser cannot reach `http://localhost:1455/auth/callback?...`, copy the full callback URL, run `node src/cli.js auth callback`, paste it into stdin, and finish with Ctrl-D. Do not put the callback URL into a shell command, issue, chat message, or committed file.
 5. Run `node src/cli.js auth status STATE` with the returned state. Continue only after `status: ok`; inspect `node src/cli.js accounts` for the credential filename.
-6. Inspect models and set the route's allowed model IDs in Connections. A model catalog is not proof of entitlement; completed real inference is the final check.
+6. In Connections, open Set up models, load the available models, select the allowlist, and enable the connection before saving. A model catalog is not proof of entitlement; completed real inference is the final check.
 
 `auth callback --file PATH` also accepts a protected file containing only the callback URL. Remove that temporary file after use. A stale or failed state should be replaced by starting a new login. Starting or rebuilding an application never initiates OAuth.
 

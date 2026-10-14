@@ -1,8 +1,25 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")"
+if [ "$#" -eq 0 ] || [ "${1:-}" = --help ]; then
+  cat <<'HELP'
+Router4u Docker lifecycle helper
+
+First installation: sh scripts/setup-docker.sh
+Start or update:    ./router4u up -d --build
+Status:             ./router4u ps
+Logs:               ./router4u logs -f
+Stop:               ./router4u stop
+
+Manage accounts, models, projects, and keys at http://127.0.0.1:9470/.
+Sign in with ROUTER4U_ADMIN_KEY from .runtime/.env.
+Advanced CLI: ./router4u cli --help
+Other arguments are passed to Docker Compose. See docs/docker.md.
+HELP
+  exit 0
+fi
 if [ ! -f .runtime/compose.env ]; then
-  echo 'Run sh scripts/setup-docker.sh MODEL first, or create .runtime/compose.env for an existing installation.' >&2
+  echo 'Run sh scripts/setup-docker.sh first, or create .runtime/compose.env for an existing installation.' >&2
   exit 1
 fi
 if [ "${1:-}" = cli ]; then

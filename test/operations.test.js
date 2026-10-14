@@ -80,7 +80,10 @@ test('State directory rejects a second active owner and recovers a stale lock', 
 test('CLI initializes protected configuration and refuses credential overwrite', context => {
   const directory = temporary(context);
   const cli = resolve('src/cli.js');
-  execFileSync(process.execPath, [cli, 'init', '--model', 'test-model'], { cwd: directory });
+  execFileSync(process.execPath, [cli, 'init'], { cwd: directory });
+  const config = JSON.parse(readFileSync(join(directory, '.runtime/router4u.json')));
+  assert.deepEqual(config.routes[0].models, []);
+  assert.equal(config.routes[0].enabled, false);
   const secretFile = join(directory, '.runtime/.env');
   const original = readFileSync(secretFile, 'utf8');
   assert.equal(statSync(secretFile).mode & 0o777, 0o600);

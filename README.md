@@ -13,13 +13,20 @@ Use ChatGPT/Codex account connections only for yourself and your own application
 ## Run with Docker
 
 ```sh
-sh scripts/setup-docker.sh YOUR_ACCOUNT_MODEL codex
+sh scripts/setup-docker.sh
 ./router4u up -d --build
 ```
 
-Open **http://127.0.0.1:9470/** and sign in with the operator key from `.runtime/.env`. Use the [web control room](docs/web-ui.md) to connect Codex, configure routes, create projects and keys, inspect requests, and manage settings.
+No model or provider credential is needed during installation. Open **http://127.0.0.1:9470/** and sign in with `ROUTER4U_ADMIN_KEY` from `.runtime/.env`.
 
-Follow [Docker installation and account operations](docs/docker.md) for callback submission, project keys, extra accounts, configuration reload, and complete backups. Both long-running services use `restart: unless-stopped`; state and credentials persist outside containers. Additional isolated accounts can be prepared with `sh scripts/add-partition.sh work YOUR_ACCOUNT_MODEL codex`.
+1. In **Connections → personal**, choose **Connect Codex** and finish sign-in.
+2. Choose **Set up models → Load available models**, select the models you want, and click **Use selected models**.
+3. Set **Connection status** to **Enabled** and **Save route**.
+4. In **Projects & keys**, create a project, allow its connection, and issue an application key.
+
+The initial connection is disabled and has no model allowlist. No inference is admitted until it is configured and enabled. Use the [web control room](docs/web-ui.md) for everyday administration; `./router4u` only manages Docker lifecycle and optional CLI access.
+
+Follow [Docker installation and account operations](docs/docker.md) for callback submission, project keys, extra accounts, configuration reload, and complete backups. Both long-running services use `restart: unless-stopped`; state and credentials persist outside containers. Additional isolated accounts can be prepared with `sh scripts/add-partition.sh work`.
 
 The initializer refuses to overwrite an existing installation. Default application keys cannot export transcripts; issue an explicit `exchange:export` principal when needed.
 
@@ -48,32 +55,9 @@ curl http://127.0.0.1:9470/v1/usage -H "Authorization: Bearer $ALPHA_KEY"
 
 The demo creates two projects and a loopback fake provider. It preserves its SQLite state across restarts. Keys are saved in `.runtime/demo.env`, not source control. Inspect `GET /v1/requests` and `GET /v1/requests/REQUEST_ID/exchange` with the same project key. The second project's key cannot retrieve the first project's records. Stop with Ctrl-C.
 
-## Connect your own account
+## Local development and live validation
 
-Read [the authentication guide](docs/authentication.md) for the Codex login procedure, callback handling, and model selection.
-
-```sh
-npm run backend:install
-node src/cli.js init --profile codex --model YOUR_ACCOUNT_MODEL
-.tools/cli-proxy-api -config .runtime/cliproxyapi.yaml -local-model
-```
-
-In separate terminals:
-
-```sh
-npm start
-node src/cli.js auth codex
-```
-
-Open the returned URL, sign in to your own account, then submit the browser's callback URL using `node src/cli.js auth callback` on stdin. Query `node src/cli.js auth status STATE`, then `node src/cli.js accounts` and `node src/cli.js models`.
-
-Register an application and issue its project key:
-
-```sh
-node src/cli.js project put my-app --file examples/policy.json
-node src/cli.js project key my-app
-```
-
+Docker users connect accounts and issue project keys in the web UI above. For a host-process development installation, see [the authentication guide](docs/authentication.md#first-time-codex-login). `node src/cli.js init` also starts with a disabled, model-free connection; the optional `--model` flag is for deliberate preconfiguration.
 
 To deliberately send one real request after setup:
 

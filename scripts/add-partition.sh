@@ -1,5 +1,12 @@
 #!/bin/sh
 set -eu
+if [ "${1:-}" = --help ]; then
+  cat <<'HELP'
+Usage: sh scripts/add-partition.sh ID [--profile codex|api_key]
+Prepare an isolated backend; choose models in the web UI.
+HELP
+  exit 0
+fi
 cd "$(dirname "$0")/.."
 docker run --rm --network none --user "$(id -u):$(id -g)" \
   --mount "type=bind,src=$(pwd),dst=/workspace" --workdir /workspace \

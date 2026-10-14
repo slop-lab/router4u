@@ -122,3 +122,9 @@ No live provider authentication, SIWC token exchange, actual quota comparison, o
 The supported profiles are now `codex` and `api_key`. The offline suite passes 61 tests, including rejection of retired profiles through configuration validation and browser settings, rejection of the removed CLI command without altering an inert existing credential, and Responses streaming through Codex-profile fixtures with Vercel AI SDK and pi-ai. Chromium confirms that only the supported profiles are selectable and the administration workflow remains functional. The Compose suite confirms additional partition provisioning, project isolation, crash restart, and backup/restore after removal.
 
 These are offline/local contracts, not live Codex entitlement or refresh verification. Multiple-account backend support remains in scope; the complete browser-only account provisioning workflow remains an explicit implementation gap.
+
+## Model-free setup acceptance (2026-10-14)
+
+The offline suite passes 64 tests (56 core, four pinned backend contracts, four SDK client tests). New coverage verifies argument-free Docker initialization, disabled model-free connections, additional partitions without model arguments, rejection of obsolete positional arguments, preservation of existing runtime secrets, and discovery followed by explicit enablement. An enabled route without models is rejected; a disabled route never contributes to the project model catalog or dispatches inference.
+
+Chromium starts with an empty, disabled connection and completes model discovery, allowlist selection, explicit activation, project creation, and a fake-provider request. The Compose deployment suite starts generated model-free configurations, enables the fixture through the admin API, then verifies isolation, restart, and backup/restore. No live account login or provider inference was performed.

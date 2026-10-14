@@ -4,14 +4,14 @@ Docker Engine with Compose v2 is sufficient. The bootstrap runs Node in a contai
 
 ## First installation
 
-From the repository root, replace `MODEL` with a model available to your account:
+From the repository root, prepare configuration and start the containers:
 
 ```sh
-sh scripts/setup-docker.sh MODEL codex
+sh scripts/setup-docker.sh
 ./router4u up -d --build
-./router4u ps
-./router4u cli health
 ```
+
+No model, account, or provider credential is needed at installation time. The initializer creates a disabled `personal` Codex connection with `models: []`. Authentication and model selection happen in the browser. The script prepares files; `up -d --build` creates and starts containers.
 
 The initializer refuses to overwrite an existing runtime. It downloads and verifies CLIProxyAPI 8.0.28 when necessary, generates private keys without printing them, and creates `.runtime/router4u.json`, `.runtime/cliproxyapi.yaml`, `.runtime/.env`, and `.runtime/compose.env`. Keep `.runtime` and `.tools` out of source control. Do not run the initializer against an existing installation to reset credentials.
 
@@ -21,9 +21,18 @@ The wrapper is equivalent to `docker compose --env-file .runtime/compose.env`, a
 
 ## Open the control room
 
-Open `http://127.0.0.1:9470/` and sign in using `ROUTER4U_ADMIN_KEY` from the private `.runtime/.env` file. The [web UI](web-ui.md) is the primary interface for everyday administration. The CLI procedures below remain available for automation and maintenance.
+Open `http://127.0.0.1:9470/` and sign in using `ROUTER4U_ADMIN_KEY` from the private `.runtime/.env` file.
 
-## Connect Codex
+1. In **Connections → personal**, click **Connect Codex**, complete provider sign-in, and submit the callback URL if required. Check the returned status.
+2. Open **Set up models** and click **Load available models**. Select permitted models and click **Use selected models**. Empty discovery means the account/provider setup still needs attention; it does not authorize a wildcard route.
+3. Set **Connection status** to **Enabled** and save. Model selection alone does not activate a connection. Discovery does not prove actual model entitlement.
+4. Open **Projects & keys**, create a project, select the enabled connection, and issue a key. Use that key in the consuming application.
+
+For API-key providers, configure the private backend provider first, then change **Backend connection settings → Authentication profile** to `api_key` and select the required protocols before enabling the route. Router4u does not ask for upstream API keys in the browser.
+
+The [web UI](web-ui.md) is the primary interface for everyday administration. The CLI procedures below are optional alternatives for automation and maintenance. Run `./router4u` without arguments for Docker lifecycle help; it is not the account setup interface.
+
+## Optional CLI: connect Codex
 
 ```sh
 ./router4u cli auth codex --route personal
@@ -48,7 +57,7 @@ The backend owns OAuth state, PKCE, token exchange, credential persistence, and 
 
 ## Authorize an application
 
-Edit `.runtime/project.json`, then apply it and issue a key:
+Normally use **Projects & keys** in the browser after enabling a connection. For CLI automation, edit `.runtime/project.json`, then apply it and issue a key:
 
 ```sh
 ./router4u cli project put my-app --file /config/project.json
@@ -69,17 +78,17 @@ Application containers join only the Compose `applications` network (normally `r
 A separate partition is the default when accounts have different project eligibility. It owns its own auth directory and refresh lifecycle:
 
 ```sh
-sh scripts/add-partition.sh work MODEL codex
+sh scripts/add-partition.sh work
 ./router4u up -d --build
-./router4u cli auth codex --route work
-./router4u cli accounts --route work
 ```
 
-The helper creates `.runtime/partitions/work/`, generates separate backend/management keys, adds a `work` route, and writes `.runtime/partitions.compose.yaml`. It does not copy provider keys or credentials from the original partition. Compose recreates the gateway when its environment changes; existing ledger and project keys survive. Pause/drain before this planned restart if active streams must finish.
+The helper creates `.runtime/partitions/work/`, generates separate backend/management keys, adds a disabled `work` route with no models, and writes `.runtime/partitions.compose.yaml`. It does not copy provider keys or credentials from the original partition. Compose recreates the gateway when its environment changes; existing ledger and project keys survive. Pause/drain before this planned restart if active streams must finish.
 
-For API-key providers, choose `api_key`, edit the partition's backend configuration using the pinned CLIProxyAPI v8 schema, and restart that backend. Provider keys belong only in the private backend configuration.
+For API-key providers, use `sh scripts/add-partition.sh work --profile api_key`, edit the partition's backend configuration using the pinned CLIProxyAPI v8 schema, and restart that backend. Provider keys belong only in the private backend configuration.
 
 If browser settings are active, the saved SQLite configuration still takes precedence over the file changed by the helper. Add the generated route through Connections using its generated environment-variable names, or first export your browser configuration into the installation file and then explicitly reload that file after the helper runs. Do not reload a stale file and discard unrelated browser edits.
+
+In Connections, sign in for `work`, load and select its models, and enable it. Creating a partition does not select a model or authorize any project. The browser form uses `http://backend-work:8317/v1`, `ROUTER4U_WORK_BACKEND_KEY`, and `ROUTER4U_WORK_BACKEND_KEY_MANAGEMENT` for a generated `work` partition when a browser override requires adding the route manually.
 
 Grant the new route only to intended projects by editing and applying their project policies. To record a stable exclusive account identity, add this entry to gateway `accounts` after learning the credential filename:
 
@@ -90,6 +99,10 @@ Grant the new route only to intended projects by editing and applying their proj
 Add `"account_id":"work-owner"`, `"exclusive_account":true`, and `"credential_name":"NAME.json"` to the `work` route. Reload, then run `./router4u cli account inspect work-owner`. Exclusive routes verify the pinned version, retry settings, absence of API-key groups, and exactly one enabled matching file-backed credential before admission. Credential filenames are backend references; account IDs remain stable. To change an account binding, create a new account ID.
 
 Several credentials may share a backend only when every consuming route is permitted to use that entire account set. Such a pool has unknown actual account attribution; do not configure an exclusive account ID or claim per-account capacity enforcement for it. Account-specific eligibility requires separate partitions.
+
+## Existing installations
+
+Do not rerun setup to change an existing installation. Rebuild/recreate with `./router4u up -d --build`; existing configured routes and model choices remain unchanged. The old positional `MODEL PROFILE` setup arguments are rejected with guidance to use the browser. Additional partition syntax is now `ID [--profile codex|api_key]`; no model argument is accepted. Both setup scripts support `--help` without starting Docker or provisioning files.
 
 ## Reload and account lifecycle
 

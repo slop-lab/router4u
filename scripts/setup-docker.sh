@@ -1,5 +1,12 @@
 #!/bin/sh
 set -eu
+if [ "${1:-}" = --help ]; then
+  cat <<'HELP'
+Usage: sh scripts/setup-docker.sh
+Prepare Docker configuration; connect accounts and choose models in the web UI.
+HELP
+  exit 0
+fi
 cd "$(dirname "$0")/.."
 mkdir -p .runtime .tools
 chmod 700 .runtime .tools

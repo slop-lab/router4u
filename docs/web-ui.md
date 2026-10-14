@@ -6,11 +6,12 @@ Sign in with `ROUTER4U_ADMIN_KEY` from your installation's private environment f
 
 ## Everyday workflow
 
-1. Open **Connections**. Inspect an existing backend, view credentials or models, or add/edit a route using the form. A route references a backend already installed and environment variables already set on the gateway; it does not create a backend container.
+1. Open **Connections**. A new installation contains a disabled `personal` connection with no selected models. Inspect an existing backend, view credentials or models, or add/edit a route using the form. A route references a backend already installed and environment variables already set on the gateway; it does not create a backend container.
 2. Choose **Connect Codex**, open the provider sign-in link, and complete login. If the browser's localhost callback cannot load, paste the full callback URL into the dialog and submit it. Check status before closing the dialog. CLIProxyAPI owns the OAuth transaction and token refresh.
-3. Open **Projects & keys**, create a project, select its allowed routes, and set limits. Issue a key and copy the one-time result into your application. The client base URL is the gateway's `/v1` address reachable from that application, which can differ from the browser's localhost address.
-4. Use **Requests** to inspect project history, cancel work, or explicitly download an original exchange. Exports can contain sensitive prompts and responses.
-5. Use **Overview** to pause admissions and **Activity** to inspect audit events or release uncertain occupancy after checking the upstream outcome. Account mutations require paused admissions, drained active work, and no uncertain occupancy.
+3. Open **Set up models → Load available models**, select the models you need, and click **Use selected models**. Set **Connection status** to **Enabled** and save. The form also accepts explicit model IDs when appropriate; only disabled routes may have an empty allowlist. Discovery is not proof of live entitlement.
+4. Open **Projects & keys**, create a project, select its allowed routes, and set limits. Issue a key and copy the one-time result into your application. The client base URL is the gateway's `/v1` address reachable from that application, which can differ from the browser's localhost address.
+5. Use **Requests** to inspect project history, cancel work, or explicitly download an original exchange. Exports can contain sensitive prompts and responses.
+6. Use **Overview** to pause admissions and **Activity** to inspect audit events or release uncertain occupancy after checking the upstream outcome. Account mutations require paused admissions, drained active work, and no uncertain occupancy.
 
 Project forms expose common limits and preserve advanced policy fields in a JSON editor. Default issued keys do not include `exchange:export`. The existing admin API and CLI remain available for automation and recovery.
 

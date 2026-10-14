@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
 const directory = mkdtempSync(join(tmpdir(), 'router4u-browser-'));
 const backend = await fakeProvider();
-const config = { data_dir: directory, port: 0, routes: [{ id: 'local', profile: 'api_key', base_url: backend.url, key_env: 'FAKE_KEY', models: ['test-model'], protocols: ['responses', 'chat'] }] };
+const config = { data_dir: directory, port: 0, routes: [{ id: 'local', profile: 'api_key', base_url: backend.url, key_env: 'FAKE_KEY', enabled: false, models: [], protocols: ['responses', 'chat'] }] };
 const gateway = createGateway(config, { environment: { ROUTER4U_ADMIN_KEY: adminKey, FAKE_KEY: 'inert' }, loadConfig: () => config });
 const url = await gateway.listen();
 let browser;
@@ -25,6 +25,18 @@ try {
   await page.getByLabel('Operator key').fill(adminKey);
   await page.getByRole('button', { name: 'Open control room' }).click();
   await page.getByRole('heading', { name: 'Make yourself at home' }).waitFor();
+  assert.equal(gateway.config.routes[0].enabled, false);
+  assert.deepEqual(gateway.config.routes[0].models, []);
+  await page.getByRole('link', { name: 'Connections', exact: true }).click();
+  await page.getByRole('button', { name: 'Set up models', exact: true }).click();
+  await page.getByRole('button', { name: 'Load available models', exact: true }).click();
+  await page.getByLabel('Available models', { exact: true }).selectOption(['test-model']);
+  await page.getByRole('button', { name: 'Use selected models', exact: true }).click();
+  await page.getByLabel('Connection status').selectOption('true');
+  await page.getByRole('button', { name: 'Save route', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit route', exact: true }).waitFor();
+  assert.deepEqual(gateway.config.routes[0].models, ['test-model']);
+  assert.equal(gateway.config.routes[0].enabled, true);
   await page.getByRole('link', { name: 'Projects & keys', exact: true }).click();
   await page.getByRole('button', { name: 'Create project', exact: true }).click();
   await page.getByLabel('Project ID', { exact: true }).fill('browser-app');
@@ -76,7 +88,7 @@ try {
   await page.getByLabel('Operator key').waitFor();
   assert.equal((await page.request.get(url + '/admin/projects')).status(), 401);
   assert.deepEqual(errors, []);
-  console.log('Browser smoke passed: login, projects, keys, inference, history, route edits, persistent settings, audit, pause/resume, responsive layout, and logout. No live provider contacted.');
+  console.log('Browser smoke passed: model-free onboarding, discovery and enablement, login, projects, keys, inference, history, route edits, persistent settings, audit, pause/resume, responsive layout, and logout. No live provider contacted.');
 } finally {
   await browser?.close(); await gateway.close(); await backend.close(); rmSync(directory, { recursive: true, force: true });
 }

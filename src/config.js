@@ -66,7 +66,7 @@ export function validateConfig(input) {
     requireValue(route.enabled === undefined || typeof route.enabled === 'boolean', 'Invalid route enabled flag');
     requireValue(Object.keys(route).every(key => ['id', 'profile', 'models', 'protocols', 'base_url', 'key_env', 'management_key_env', 'account_id', 'exclusive_account', 'credential_name', 'concurrency', 'enabled'].includes(key)), 'Unsupported route field');
     requireValue(['api_key', 'codex'].includes(route.profile), 'Unsupported route profile; use codex or api_key. For retired chatgpt profiles see docs/authentication.md');
-    requireValue(Array.isArray(route.models) && route.models.length > 0 && route.models.every(model => typeof model === 'string' && model.length < 200), 'Explicit model allowlist is required');
+    requireValue(Array.isArray(route.models) && (route.enabled === false || route.models.length > 0) && route.models.every(model => typeof model === 'string' && model.trim().length > 0 && model.length < 200), 'Enabled routes require a nonempty model allowlist; only disabled routes may have no models');
     requireValue(Array.isArray(route.protocols) && route.protocols.length > 0 && route.protocols.every(protocol => ['responses', 'chat'].includes(protocol)), 'Invalid protocols');
     requireValue(typeof route.key_env === 'string' && route.key_env.length > 0, 'Backend key environment variable is required');
     const backendURL = new URL(route.base_url);

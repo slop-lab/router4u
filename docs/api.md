@@ -8,7 +8,7 @@ All inference, reads, and cancellation require the relevant principal scope and 
 |---|---|---|
 | POST | `/v1/responses` | Native Responses request and JSON/SSE response |
 | POST | `/v1/chat/completions` | Chat Completions on routes allowing `chat` |
-| GET | `/v1/models` | Authorized configured model allowlists; not entitlement verification |
+| GET | `/v1/models` | Authorized enabled-route model allowlists; not entitlement verification |
 | GET | `/v1/capabilities` | Authorized route profiles and explicitly supported features |
 | GET | `/v1/usage` | Current project period, settled usage, reservations, outstanding prior-period work |
 | GET | `/v1/requests` | Latest 200 project request records |
@@ -155,3 +155,7 @@ Retention expiry is booked from admission time and applies only after local exec
 - Existing `POST /admin/config/reload` replaces the browser override with the installation file only on a successful non-dry-run apply.
 
 See [web administration](web-ui.md) for session and configuration precedence details.
+
+## Unconfigured connections
+
+A route with `enabled:false` may have `models:[]` for account onboarding. Its management login and model discovery remain available to operators. An enabled route requires a nonempty allowlist; empty or whitespace-only model IDs are rejected. Disabled routes do not contribute to the client `/v1/models` catalog and cannot admit inference. Model discovery never enables a route automatically.

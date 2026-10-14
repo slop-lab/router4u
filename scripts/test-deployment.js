@@ -9,11 +9,11 @@ const repository = resolve('.'); const directory = mkdtempSync(join(tmpdir(), 'r
 const project = `router4u-test-${process.pid}`;
 const nodeImage = 'node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df';
 symlinkSync(join(repository, '.tools'), join(directory, '.tools'));
-execFileSync(process.execPath, [join(repository, 'scripts/setup-docker.js'), 'test-model', 'api_key'], { cwd: directory, stdio: 'pipe' });
+execFileSync(process.execPath, [join(repository, 'scripts/setup-docker.js')], { cwd: directory, stdio: 'pipe' });
 const backendPath = join(runtime, 'cliproxyapi.yaml'); const backend = JSON.parse(readFileSync(backendPath, 'utf8'));
 backend['api-keys'] = { codex: [{ name: 'inert-fixture', 'base-url': 'http://fake:8899/v1', keys: [{ 'api-key': 'inert-provider-key' }], models: [{ name: 'test-model', alias: 'test-model' }] }] };
 writeFileSync(backendPath, JSON.stringify(backend));
-execFileSync(process.execPath, [join(repository, 'scripts/add-partition.js'), 'extra', 'test-model', 'codex'], { cwd: directory, stdio: 'pipe' });
+execFileSync(process.execPath, [join(repository, 'scripts/add-partition.js'), 'extra'], { cwd: directory, stdio: 'pipe' });
 const extraBackend = JSON.parse(readFileSync(join(runtime, 'partitions/extra/cliproxyapi.yaml'), 'utf8'));
 assert.equal(extraBackend['api-keys'], undefined);
 const override = join(directory, 'compose-test.json');
@@ -38,6 +38,14 @@ try {
   compose(['up', '-d', '--no-build', 'gateway', 'backend', 'backend-extra', 'fake', 'project-a', 'project-b']);
   await waitReady();
   for (let attempt = 0; attempt < 60; attempt++) { try { cli('models', '--route', 'personal'); break; } catch (error) { if (attempt === 59) throw error; await delay(250); } }
+  const initial = cli('api', '/admin/config');
+  assert.deepEqual(initial.config.routes[0].models, []); assert.equal(initial.config.routes[0].enabled, false);
+  assert.deepEqual(initial.config.routes[1].models, []); assert.equal(initial.config.routes[1].enabled, false);
+  const configured = initial.config; delete configured.revision;
+  configured.routes[0] = { ...configured.routes[0], profile: 'api_key', enabled: true, models: ['test-model'] };
+  compose(['exec', '-T', 'gateway', 'node', '/app/src/cli.js', 'api', '/admin/config', '--method', 'PUT', '--file', '/dev/stdin'], JSON.stringify({ revision: initial.revision, config: configured }));
+  // Later file-reload coverage uses the exported active configuration, as documented.
+  writeFileSync(join(runtime, 'router4u.json'), JSON.stringify(configured));
   for (const id of ['alpha', 'beta']) cli('project', 'put', id, '--file', '/config/project.json');
   const alpha = cli('project', 'key', 'alpha', '--scopes', 'inference,usage:read,requests:read,requests:cancel,exchange:export');
   const beta = cli('project', 'key', 'beta');
