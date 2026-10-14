@@ -63,3 +63,7 @@ Sources: [models and inference](https://developers.openai.com/siwc/token-sharing
 CLIProxyAPI is the sole active refresher. Never copy a rotating credential into several running workers. Account reauthorization is scoped to the affected partition. The gateway neither logs users in automatically nor deletes credentials during a provider outage.
 
 The first validated deployment is same-host. A remote browser's loopback callback does not reach the server. Follow the provider's [self-hosted VM guidance](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms) before transferring credentials, preserving the correct host identity and a single refresh owner. Remote transfer and host-specific revocation semantics are not verified by this repository's offline suite.
+
+## Codex versus SIWC
+
+Both paths are retained for distinct upstream integrations. See [the dated comparison and source evidence](authentication-comparison.md). The current stopped-backend SIWC procedure is an integration constraint, not a requirement of the Sign in with ChatGPT protocol.

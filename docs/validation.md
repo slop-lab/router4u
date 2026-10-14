@@ -107,3 +107,13 @@ The median increment was approximately 3.30 ms on this host. Capture work averag
 Real Codex/SIWC token exchange, entitlement, refresh rotation, provider tools/modalities, real quota semantics, and cancellation after upstream consumption still require explicit live checks. Credential restoration uses inert fixtures and cannot prove that an old rotating token will remain accepted.
 
 The pinned management metadata does not expose SIWC credential mode; operators can inspect only the local boolean/presence flags using the documented Docker command. Full hidden-attempt journaling, translated upstream capture, strict token ceilings, stateful continuation, additional transports, distributed workers, monetary estimates, and an application/agent control plane are not enabled. The architecture permits these narrower capabilities when their limits are explicit. These exclusions must not be represented as live-verified implementations.
+
+## Web administration acceptance (2026-10-14)
+
+The web increment passed 61 offline tests: 53 core tests (including session authentication, CSRF, project/admin separation, configuration conflicts, durable browser overrides, and explicit file-reset behavior), four pinned CLIProxyAPI contracts, and four real SDK client tests. Run `sh scripts/test-offline.sh` after installing the pinned development dependencies and backend fixture.
+
+Run `npm ci` followed by `npm run test:browser` for the actual Chromium smoke test. The script prepares pinned Node and Playwright container images, then runs with `--network none`, a read-only repository, and temporary writable browser state. Browser coverage includes login, project creation, one-time key issuance, fake-provider inference, request history, route editing, persistent configuration, audit rendering, pause/resume, reload with an existing session, a 390px viewport, and logout. Browser dependencies are development-only and are not copied into the production image.
+
+The real Compose deployment test additionally confirmed that the production image serves the web UI, accepts an operator session and CSRF-authenticated settings save, and retains browser settings across automatic `unless-stopped` crash restart and full installation backup/restore. Existing project network isolation and unknown-usage recovery checks also passed.
+
+No live provider authentication, SIWC token exchange, actual quota comparison, or real credential refresh was performed. The authentication comparison is based on fetched official documentation and the pinned backend source, not provider execution.
