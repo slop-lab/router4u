@@ -28,6 +28,45 @@ await result.finishReason;
 
 On Codex routes, use the route’s advertised protocols and verify model-specific request parameters and tools against the backend. SDK availability of a tool does not establish provider support. A normal API-key route may use `provider.chat(model)` for Chat Completions.
 
+## pi CLI
+
+The owner reports successful real-provider use through pi. Exact client/model versions and multi-turn tool coverage were not recorded; this is separate from the pinned SDK tests below.
+
+Add a `router4u` entry to `providers` in `~/.pi/agent/models.json`, preserving existing providers. Replace `MODEL_ID` with a model allowed by your Router4u project:
+
+```json
+{
+  "providers": {
+    "router4u": {
+      "baseUrl": "http://127.0.0.1:9470/v1",
+      "api": "openai-responses",
+      "apiKey": "${R4U_KEY}",
+      "models": [{ "id": "MODEL_ID" }]
+    }
+  }
+}
+```
+
+`${R4U_KEY}` references the environment variable; do not replace it with a committed secret. Load your application's private `.env` before launching pi:
+
+```sh
+set -a
+. ./.env
+set +a
+pi --provider router4u --model MODEL_ID
+```
+
+For a single response without tools or a persisted session:
+
+```sh
+pi --provider router4u --model MODEL_ID --no-tools --no-session \
+  -p "Say exactly: Router4u connection works."
+```
+
+The request consumes real provider quota and appears in Router4u's Requests view. Upstream login remains in CLIProxyAPI; pi receives only the project key. A new Router4u data volume requires a new project key and a corresponding update to `R4U_KEY`. For pi in another container, use a shared-network gateway address instead of localhost.
+
+These settings follow the [pi model configuration](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/models.md) and [CLI reference](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/cli.md). Check `pi --help` for your installed version. Projects authorized for several routes can set `headers: { "X-Router4u-Route": "personal" }` in the custom provider configuration.
+
 ## pi-ai
 
 Tested with `@earendil-works/pi-ai@1.2.0`. Pin the package before adopting examples from a different release.

@@ -1,6 +1,6 @@
 # Deployment and operations
 
-For the ready-to-run Compose installation, account partition helper, and exact Docker commands, see [Docker operations](docker.md).
+Start with the [single-container Docker guide](docker.md). Use [Compose partitions](compose.md) when projects need different backend credential sets.
 
 ## Supported installation
 
@@ -8,21 +8,15 @@ Run one Node.js 24 gateway and one or more dedicated CLIProxyAPI v8.0.28 partiti
 
 Runtime dependencies are Node built-ins. The optional development dependencies are only for real SDK compatibility tests. The no-plugin backend binary is a pinned, checksummed download. Native untrusted plugins are not part of the deployment.
 
-Use `node src/cli.js doctor --route personal` to inspect the backend version, global retry configuration, and credential counts without printing token material. Ordinary health probes never contact a billable model. `/healthz` checks process liveness; `/readyz` checks local store access and the admission pause flag. Neither proves an account is authorized or a provider is reachable.
+Use `docker exec router4u router4u doctor --route personal` to inspect the backend version, global retry configuration, and credential counts without printing token material. Ordinary health probes never contact a billable model. `/healthz` checks process liveness; `/readyz` checks local store access and the admission pause flag. Neither proves an account is authorized or a provider is reachable.
 
 ## Network and credential boundary
 
-Default listeners bind to loopback. For separate project containers, provide a reachable gateway address using your runtime's private networking and explicit discovery configuration. Give each application a separate project key. Do not mount `.runtime`, the backend auth directory, or management credentials into project containers.
+The bundled backend binds to container loopback. The gateway listens on port 9470 inside the container; the documented Docker port mapping restricts host access to loopback. For separate project containers, provide a reachable gateway address using your runtime's private networking and explicit discovery configuration. Give each application a separate project key. Do not mount `.runtime`, the backend auth directory, or management credentials into project containers.
 
-Only the gateway should reach backend inference and management. If using containers, give the gateway both an application network and an infrastructure network; attach CLIProxyAPI only to the infrastructure network. Do not publish its management port. Bind gateway ingress to the intended network and set `allow_private_http:true` only for an explicitly trusted private backend connection. Use authenticated TLS for traffic crossing an untrusted network. A host administrator remains outside this isolation guarantee.
+Only the gateway should reach backend inference and management. In the separate Compose topology, give the gateway both an application network and an infrastructure network; attach CLIProxyAPI only to the infrastructure network. Do not publish its management port. Bind gateway ingress to the intended network and set `allow_private_http:true` only for an explicitly trusted private backend connection. Use authenticated TLS for traffic crossing an untrusted network. A host administrator remains outside this isolation guarantee.
 
-`Dockerfile` packages the gateway without dev dependencies:
-
-```sh
-docker build -t router4u:local .
-```
-
-Mount a protected configuration file at `/config/router4u.json`, durable writable storage at the configured `data_dir`, and provide operator/backend environment secrets. The container runs as the `node` user. Prepare ownership of the state mount for its UID. Update `host`, `data_dir`, and backend address for your container network; a host-loopback backend URL does not reach a different container.
+The image contains the gateway, pinned backend, CA certificates, and process supervisor without development dependencies. Its named volume at `/var/lib/router4u` holds private keys, configuration, OAuth credentials, and SQLite data. Bind mounts must be writable by the container user (UID/GID 1000 by default). In Compose, configuration is mounted at `/config` and gateway data at `/state`; do not mix these layouts.
 
 ## Route and account isolation
 
@@ -47,10 +41,10 @@ The archive limit measures retained payload bytes, not database/WAL/index overhe
 On restart, undispatched reservations are settled as zero with `source:not_dispatched`. Durable dispatch intents without completion become `outcome_unknown`, retain token reservations, and are never replayed. Client disconnect, requested cancellation, delivered output, accounting state, and recording state stay independent.
 
 ```sh
-node src/cli.js requests my-app
-node src/cli.js request REQUEST_ID
-node src/cli.js exchange REQUEST_ID
-node src/cli.js resolve REQUEST_ID --tokens 123 --reason 'Verified using the provider record'
+docker exec router4u router4u requests my-app
+docker exec router4u router4u request REQUEST_ID
+docker exec router4u router4u exchange REQUEST_ID
+docker exec router4u router4u resolve REQUEST_ID --tokens 123 --reason 'Verified using the provider record'
 ```
 
 Resolve only when you have a basis for the adjustment. The service records the reason and actor in the audit/ledger; it never deletes an unknown charge to make totals look exact. Missing usage remains reserved even if a request's local deadline elapsed. Backend internal attempts may consume additional tokens not visible in a final response; a settled request observation does not establish complete upstream consumption.
@@ -59,26 +53,24 @@ Revoking a principal or disabling a project affects new work. To stop existing w
 
 ## Backups and restore
 
-1. Pause new admissions and drain/cancel active requests. Stop Router4u and the relevant backend before making an installation backup.
-2. Run `node src/cli.js backup --file /protected/path/new-backup`. This requires a stopped gateway and creates a consistent SQLite snapshot containing ledger, reservations, manifests, payloads, audit, and outbox, plus gateway configuration.
-3. Separately copy `.runtime/secrets.json`, the backend configuration, and its entire auth directory into the protected backup. The gateway backup command deliberately does not infer custom backend credential paths. Keep exactly one live refresh owner. Treat all backup files as secrets.
-4. To restore, stop all old processes. Restore the SQLite snapshot into the configured state directory as `router4u.sqlite`, restore gateway/backend configuration and credentials, and preserve file ownership/permissions. Use an empty state directory; never mix an old WAL/SHM file with a restored database. Restore any externally managed encryption keys before starting.
-5. Start one backend and one gateway. Startup reconciliation retains ambiguous work and never replays it. Check usage and representative authorized exchange exports. Run a deliberate live smoke request only after inspecting the recovered state.
+For bundled mode, pause admissions, inspect active work, stop the container, and copy the entire named volume. Restore into a fresh volume with the same ownership. This preserves `secrets.json`, gateway/backend configuration, OAuth files, and SQLite data together. Do not copy a live SQLite database without a supported snapshot operation or mix restored files with an old WAL. Keep exactly one active refresh owner.
 
-The gateway backup test restores payloads and unresolved reservations and verifies integrity. `backup-installation` additionally bundles credentials, backend configuration, environment keys, and generated extra partitions; `restore-installation` verifies all file hashes and stages an entirely new runtime. The Docker lifecycle suite exercises this complete path using inert credentials. Live provider refresh after credential restoration requires an operator validation; restoring an old rotating refresh token can require reauthorization.
+The separate Compose topology has explicit `backup-installation` and `restore-installation` commands with integrity checks; see [the Compose backup procedure](compose.md#back-up-and-restore). The database-only `backup` command does not include backend credentials. Synthetic backup tests cannot prove that restored rotating provider tokens will remain accepted.
+
+After recovery, inspect usage, unknown reservations, and authorized exchange records before resuming admissions. Never replay ambiguous work automatically.
 
 ## Retention and upgrade
 
-Retention supports per-project `retention_days`, booked at admission. A bounded maintenance sweep expires completed payloads automatically; `retention` triggers a sweep manually. Existing request retention snapshots do not change when policy is edited. `node src/cli.js delete-exchange REQUEST_ID` deletes a completed exchange's payloads while preserving accounting and a deletion manifest. No automatic eviction occurs when the archive fills. Required capture rejects/stops work; best-effort capture reports gaps. Backups retain deleted content until their own expiry policy removes it.
+Retention supports per-project `retention_days`, booked at admission. A bounded maintenance sweep expires completed payloads automatically; `retention` triggers a sweep manually. Existing request retention snapshots do not change when policy is edited. `docker exec router4u router4u delete-exchange REQUEST_ID` deletes a completed exchange's payloads while preserving accounting and a deletion manifest. No automatic eviction occurs when the archive fills. Required capture rejects/stops work; best-effort capture reports gaps. Backups retain deleted content until their own expiry policy removes it.
 
-Before changing CLIProxyAPI, back up state, inspect the new source/release, update the pinned version and checksum intentionally, and run `npm test`, `npm run test:backend`, and `npm run test:clients`. Test the original and upgraded configuration before rolling back. Router4u rejects database schema versions newer than it understands; it does not silently downgrade the database.
+Before changing CLIProxyAPI, back up state, inspect the new source/release, update the pinned version and checksum intentionally, and run `npm test`, `npm run test:backend`, and `npm run test:clients`. Test the original and upgraded configuration before rolling back. Router4u rejects incompatible database schema versions without converting them.
 
-All committed documentation is English. `.local` is private reference material excluded from Git and the Docker context. Runtime tokens, project keys, backend binaries, and SQLite files are also excluded.
+Runtime tokens, project keys, SQLite files, and downloaded backend artifacts must remain outside source control. Keep application `.env` files private as well.
 
 
 ## Operational administration
 
-`reload --dry-run` validates the edited gateway file; `reload` commits a new revision. Invalid changes leave the current service configuration intact. The data directory/listener/admin-key-variable/maintenance interval require a process restart. Replacing environment secrets requires recreating the container. Existing streams retain their policy and route snapshot.
+`reload --dry-run` validates the edited gateway file; `reload` commits a new revision. Invalid changes leave the current service configuration intact. The data directory/listener/admin-key-variable/maintenance interval require a process restart. Changing the secrets file requires restarting its consumers; administrator-key rotation in bundled mode requires a stopped installation. Existing streams retain their policy and route snapshot.
 
 `effective-policy PROJECT` explains applicable project, service, and route limits and capability exclusions. `metrics`, `alerts`, and `health` are authenticated operator reads. Account inspection stores sanitized observations with freshness and drift; passive provider quota headers are separate from local token budgets. No health probe performs inference. Pull alerts into your monitoring system; Router4u does not send external notifications.
 

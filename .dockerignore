@@ -8,3 +8,6 @@ docs
 examples
 scripts
 package-lock.json
+
+.env
+.env.*

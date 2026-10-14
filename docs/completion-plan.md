@@ -1,12 +1,12 @@
 # Development status and remaining work
 
-The private architecture is the requirements baseline. This is an initial development project, not a released service with existing users. Automated local checks do not constitute live-provider or end-user acceptance.
+This is an initial development project. The owner reports successful real-provider use through pi. Automated checks and this manual validation have distinct scopes; see [validation evidence](validation.md).
 
 ## Implemented for local verification
 
 - Project identities, explicit principal scopes, policy revisions, admission, durable usage reservations, capture, retention, and audited corrections.
 - CLIProxyAPI-owned OAuth and refresh delegation, route/account metadata, diagnostics, and conservative account constraints.
-- Docker Compose with private backend networking, persistent state, `restart: unless-stopped`, and current-schema backup/restore.
+- A bundled container with private persistent keys, loopback-only backend, process supervision, and restart support; optional Compose partitions and current-schema backup/restore.
 - Model-free installation and browser login, model selection, route enablement, project/key management, request inspection, and saved settings.
 - Offline fixtures, pinned backend contracts, SDK client tests, Chromium tests, and isolated container lifecycle checks.
 
@@ -14,9 +14,9 @@ See [validation boundaries](validation.md) for what these tests establish. The i
 
 ## Remaining work
 
-Multiple upstream accounts are required by the architecture (§4.2 and §5.2). Partitions, project route authorization, exclusive bindings, and scoped lifecycle operations exist. Creating partitions, provisioning secrets, and registering accounts are not yet a complete browser-only workflow.
+Multiple upstream accounts with distinct project eligibility use isolated partitions. Partitions, project route authorization, exclusive bindings, and scoped lifecycle operations exist. Creating partitions, provisioning secrets, and registering accounts are not yet a complete browser-only workflow.
 
-The owner still needs to validate setup, actual account login, available models, real inference, SDK/application compatibility, restart behavior, account-specific reauthorization, and refresh against intended providers. Docker Hub publication and an installation script are deferred.
+Further live checks include credential reuse after restart, account-specific reauthorization, refresh rotation, cancellation, provider quota, and tool/multimodal behavior. The reported pi check does not establish every model or workflow, and it predates the fresh bundled installation. Docker Hub publication and an installation script are deferred.
 
 ## Capability boundaries
 

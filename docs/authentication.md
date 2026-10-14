@@ -8,7 +8,7 @@ Project authentication and upstream authentication are different. Router4u hashe
 
 ## Supported connections
 
-The pinned backend is CLIProxyAPI **v8.0.28**, release commit reported by its binary as `0d18d3b3`. Its management API is v8. Install the Linux x64 no-plugin executable with `npm run backend:install`; the installer checks the release checksum against a digest pinned in source.
+The pinned backend is CLIProxyAPI **v8.0.28**, release commit reported by its binary as `0d18d3b3`. Its management API is v8. The Docker image bundles the Linux x64 no-plugin executable and checks its release checksum. Host-side development tests can download the same pinned executable with `npm run backend:install`.
 
 | Mode | Connection workflow | Route profile |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ For Responses, consume the terminal event: HTTP 200 alone is not success. Failed
 
 ## Multiple accounts
 
-Multiple accounts are part of the original design. Accounts with different project eligibility use separate backend partitions, each with its own auth directory and credential lifecycle. See [the multiple-account workflow](docker.md#add-another-account-or-provider-partition).
+Accounts with different project eligibility use separate backend partitions, each with its own auth directory and credential lifecycle. See [the multiple-account workflow](compose.md#add-another-account-or-provider-partition).
 
 Use a stable account ID and an exclusive route binding when account-specific attribution or capacity limits are needed. Admission verifies the sole enabled credential in that partition. Never copy one rotating credential into multiple running workers. Reauthorization is scoped to the affected partition; a provider outage must not delete unrelated accounts.
 

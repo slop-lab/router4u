@@ -1,6 +1,6 @@
 # API and policy reference
 
-All inference, reads, and cancellation require the relevant principal scope and `Authorization: Bearer PROJECT_KEY`. Operator endpoints require the separate operator key. No cookies or browser session authentication are used. Health endpoints are unauthenticated and disclose no credentials or project data.
+All inference, reads, and cancellation require the relevant principal scope and `Authorization: Bearer PROJECT_KEY`. Operator endpoints accept the separate operator key or an authenticated browser session. Browser mutations require same-origin validation and CSRF protection. Project inference endpoints use project bearer keys. Health endpoints are unauthenticated and disclose no credentials or project data.
 
 ## Application endpoints
 
