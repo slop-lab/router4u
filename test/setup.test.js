@@ -28,9 +28,10 @@ test('Docker setup and additional partitions need no models and preserve existin
   assert.deepEqual(config.routes[0].models, []);
   assert.equal(config.routes[0].enabled, false);
   assert.equal(config.routes[0].profile, 'codex');
-  const secret = readFileSync(join(directory, '.runtime/.env'), 'utf8');
+  const secret = readFileSync(join(directory, '.runtime/secrets.json'), 'utf8');
+  assert.equal(existsSync(join(directory, '.runtime/.env')), false);
   assert.throws(() => run(directory, 'scripts/setup-docker.js'), /refusing to overwrite/);
-  assert.equal(readFileSync(join(directory, '.runtime/.env'), 'utf8'), secret);
+  assert.equal(readFileSync(join(directory, '.runtime/secrets.json'), 'utf8'), secret);
   run(directory, 'scripts/add-partition.js', 'work');
   const routes = JSON.parse(readFileSync(join(directory, '.runtime/router4u.json'))).routes;
   assert.equal(routes.length, 2);

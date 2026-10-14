@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     init: true
     user: "${ROUTER4U_UID:-1000}:${ROUTER4U_GID:-1000}"
-    env_file: "${ROUTER4U_RUNTIME_DIR:-./.runtime}/.env"
+    command: [serve, --config, /config/router4u.json]
     ports:
       - "${ROUTER4U_BIND:-127.0.0.1}:${ROUTER4U_PORT:-9470}:9470"
     volumes:
@@ -54,7 +54,7 @@ services:
     profiles: [tools]
     image: router4u:local
     user: "${ROUTER4U_UID:-1000}:${ROUTER4U_GID:-1000}"
-    env_file: "${ROUTER4U_RUNTIME_DIR:-./.runtime}/.env"
+    command: [--help]
     volumes:
       - "${ROUTER4U_RUNTIME_DIR:-./.runtime}:/config:ro"
       - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/data:/state"

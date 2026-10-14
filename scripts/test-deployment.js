@@ -77,9 +77,10 @@ try {
   const configPath = join(runtime, 'router4u.json'); const config = JSON.parse(readFileSync(configPath, 'utf8')); config.routes[0].concurrency = 2; writeFileSync(configPath, JSON.stringify(config));
   assert.equal(cli('reload', '--dry-run').applied, false); assert.equal(cli('reload').applied, true);
   const web = JSON.parse(compose(['exec', '-T', 'gateway', 'node', '--input-type=module'], `
+    import { readFileSync } from 'node:fs';
     const base = 'http://127.0.0.1:9470';
     const home = await fetch(base); if (!(await home.text()).includes('Control room')) throw new Error('Web UI missing from image');
-    const session = await fetch(base + '/web/session', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ key: process.env.ROUTER4U_ADMIN_KEY }) });
+    const session = await fetch(base + '/web/session', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ key: JSON.parse(readFileSync('/config/secrets.json')).ROUTER4U_ADMIN_KEY }) });
     const headers = { cookie: session.headers.get('set-cookie').split(';')[0], 'x-csrf-token': (await session.json()).csrf, 'content-type': 'application/json' };
     const snapshot = await (await fetch(base + '/admin/config', { headers })).json();
     delete snapshot.config.revision; snapshot.config.daily_requests = 12345;
@@ -109,7 +110,7 @@ try {
   compose(['stop', 'gateway', 'backend', 'backend-extra']);
   writeFileSync(join(runtime, 'partitions/extra/auth/inert-extra.json'), '{"refresh_token":"inert-extra-credential"}', { mode: 0o600 });
   writeFileSync(join(runtime, 'auth/inert-backup.json'), JSON.stringify({ refresh_token: 'inert-not-a-real-credential' }), { mode: 0o600 });
-  compose(['run', '--rm', '--no-deps', 'maintenance', 'backup-installation', '--file', '/backups/check', '--config', '/config/router4u.json', '--backend-config', '/config/cliproxyapi.yaml', '--auth-dir', '/auth', '--env-file', '/config/.env']);
+  compose(['run', '--rm', '--no-deps', 'maintenance', 'backup-installation', '--file', '/backups/check', '--config', '/config/router4u.json', '--backend-config', '/config/cliproxyapi.yaml', '--auth-dir', '/auth', '--env-file', '/config/secrets.json']);
   compose(['run', '--rm', '--no-deps', 'maintenance', 'restore-installation', '--file', '/backups/check', '--destination', '/restores/check']);
   assert.match(readFileSync(join(runtime, 'restores/check/auth/inert-backup.json'), 'utf8'), /inert-not-a-real-credential/);
   assert.match(readFileSync(join(runtime, 'restores/check/partitions/extra/auth/inert-extra.json'), 'utf8'), /inert-extra-credential/);

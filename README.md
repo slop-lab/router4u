@@ -13,20 +13,27 @@ Use ChatGPT/Codex account connections only for yourself and your own application
 ## Run with Docker
 
 ```sh
-sh scripts/setup-docker.sh
-./router4u up -d --build
+docker build -t router4u:local .
+docker run -d --name router4u --restart unless-stopped \
+  -p 127.0.0.1:9470:9470 \
+  -v router4u-data:/var/lib/router4u router4u:local
+docker exec router4u router4u admin-key show
 ```
 
-No model or provider credential is needed during installation. Open **http://127.0.0.1:9470/** and sign in with `ROUTER4U_ADMIN_KEY` from `.runtime/.env`.
+The Linux amd64 image includes checksum-pinned CLIProxyAPI. No host setup script, `.env`, model, or provider credential is needed. Initial configuration and private keys are generated in the persistent volume. Open **http://127.0.0.1:9470/** and sign in with the administrator key from the explicit command above. Do not share its output.
+
+Set the host bind address and port with Docker `-p`: for example `-p 192.168.1.10:8080:9470`. The default example exposes only localhost; protect nonlocal ingress with HTTPS. Do not publish backend port 8317.
 
 1. In **Connections → personal**, choose **Connect Codex** and finish sign-in.
 2. Choose **Set up models → Load available models**, select the models you want, and click **Use selected models**.
 3. Set **Request routing** to **On** and **Save route**.
 4. In **Projects & keys**, create a project, allow its connection, and issue an application key.
 
-The initial connection is disabled and has no model allowlist. No inference is admitted until it is configured and enabled. Use the [web control room](docs/web-ui.md) for everyday administration; `./router4u` only manages Docker lifecycle and optional CLI access.
+The initial connection is disabled and has no model allowlist. No inference is admitted until it is configured and enabled. Use the [web control room](docs/web-ui.md) for everyday administration. Use `docker exec router4u router4u health` for passive operational status.
 
-Follow [Docker installation and account operations](docs/docker.md) for callback submission, project keys, extra accounts, configuration reload, and complete backups. Both long-running services use `restart: unless-stopped`; state and credentials persist outside containers. Additional isolated accounts can be prepared with `sh scripts/add-partition.sh work`.
+Follow [Docker installation and account operations](docs/docker.md) for persistence, callback submission, project keys, and complete backups. The container supervises Gateway and CLIProxyAPI; failure of either ends the container so Docker can restart it. State and credentials survive container replacement in the volume.
+
+Existing separate-backend Compose installations remain supported, including additional isolated partitions. Migrate their `.runtime/.env` with `node scripts/migrate-secrets.js` before recreating them with the updated Compose file. Do not mount a Compose runtime directly into bundled mode: its paths, backend endpoints, and saved browser settings require explicit migration.
 
 The initializer refuses to overwrite an existing installation. Default application keys cannot export transcripts; issue an explicit `exchange:export` principal when needed.
 
@@ -88,6 +95,7 @@ sh scripts/test-offline.sh
 docker build -t router4u:local .
 docker build -f deploy/backend.Dockerfile -t router4u-backend:8.0.28 .tools
 npm run test:deployment
+npm run test:container
 npm run benchmark
 ```
 

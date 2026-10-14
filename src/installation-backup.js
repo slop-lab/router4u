@@ -36,7 +36,7 @@ export async function backupInstallation(store, { destination, configPath, backe
     mkdirSync(join(temporary, 'data'), { mode: 0o700 });
     await backup(store.db, join(temporary, 'data/router4u.sqlite'));
     chmodSync(join(temporary, 'data/router4u.sqlite'), 0o600);
-    for (const [source, name] of [[configPath, 'router4u.json'], [backendConfig, 'cliproxyapi.yaml'], [authDirectory, 'auth'], [environmentFile, '.env']]) copyTree(source, join(temporary, name));
+    for (const [source, name] of [[configPath, 'router4u.json'], [backendConfig, 'cliproxyapi.yaml'], [authDirectory, 'auth'], [environmentFile, environmentFile.endsWith('.json') ? 'secrets.json' : '.env']]) copyTree(source, join(temporary, name));
     for (const name of ['partitions', 'partitions.compose.yaml', 'compose.env']) {
       const source = join(dirname(configPath), name); if (existsSync(source)) copyTree(source, join(temporary, name));
     }

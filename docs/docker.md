@@ -1,8 +1,62 @@
 # Docker installation and account operations
 
-Docker Engine with Compose v2 is sufficient. The bootstrap runs Node in a container; host Node and Go are not required. The reviewed backend binary is Linux amd64. Other architectures require a separately reviewed build and contract run.
+## Single-container installation (recommended)
 
-## First installation
+Docker Engine is sufficient; host Node, Go, Compose, and a host `.env` file are not required. The image includes checksum-pinned CLIProxyAPI 8.0.28 and system CA certificates. Only Linux amd64 is reviewed; other architectures require a separately reviewed build and contract run.
+
+```sh
+docker build -t router4u:local .
+docker run -d --name router4u --restart unless-stopped \
+  -p 127.0.0.1:9470:9470 \
+  -v router4u-data:/var/lib/router4u router4u:local
+docker exec router4u router4u admin-key show
+```
+
+First start generates private keys and a disabled `personal` connection. Sign in at `http://127.0.0.1:9470/` using the explicitly retrieved administrator key, connect the account, select models, and enable routing. Keys are never printed in ordinary startup logs. An optional `ROUTER4U_ADMIN_KEY` environment value is accepted on first initialization and persisted; a conflicting value on later startup is rejected.
+
+The volume stores `secrets.json`, gateway/backend configuration, OAuth credentials, and `data/` containing the SQLite ledger and payload records. Internal backend keys are implementation details, not user configuration. Never commit or share this volume. Named volumes avoid host UID/GID setup; bind mounts must be writable by the container user (UID/GID 1000 by default). Do not use an anonymous volume or delete the named volume when replacing the container.
+
+Gateway listens on `0.0.0.0:9470` inside the container. Set the **host** bind with Docker `-p`, not a container environment variable:
+
+- `-p 127.0.0.1:9470:9470`: local host access only.
+- `-p 192.168.1.10:9470:9470`: one host interface.
+- `-p 0.0.0.0:8080:9470`: all host IPv4 interfaces, port 8080; use protected HTTPS ingress.
+
+CLIProxyAPI listens on `127.0.0.1:8317` with remote management disabled. Do not publish its port. Application containers may share a Docker network with Router4u and use `http://router4u:9470/v1`, with their own project keys and no mounts of service state.
+
+A supervisor starts Gateway after backend readiness. Either process failing ends the container; `--restart unless-stopped` handles recovery. `docker stop` allows 25 seconds for gateway shutdown before forced cleanup; use `docker stop -t 30 router4u`. Healthchecks probe local Gateway and backend management without provider inference. An unhealthy status alone does not trigger Docker restart.
+
+```sh
+docker exec router4u router4u health
+docker exec router4u router4u pause
+docker exec router4u router4u reload --config /var/lib/router4u/router4u.json --dry-run
+```
+
+To rotate the administrator key, first stop the installation; rotation refuses to run while its state lock is held. The command does not print the new key. If the container was created with an explicit `ROUTER4U_ADMIN_KEY`, recreate it without that override after rotation; the old value will be rejected:
+
+```sh
+docker stop -t 30 router4u
+docker run --rm -v router4u-data:/var/lib/router4u router4u:local admin-key rotate
+docker start router4u
+docker exec router4u router4u admin-key show
+```
+
+For a complete cold backup, pause admissions, inspect active requests, stop the container, then copy the **entire** volume using a temporary container. Keep both processes stopped for the whole copy. The backup includes live credentials and original payloads. Restore into a new volume; start only one installation using those credentials. Do not blindly replay uncertain requests. CLIProxyAPI remains the only OAuth and refresh owner.
+
+Bundled mode currently starts one backend. Different project-to-account eligibility requires the separate partition topology below; do not combine differently authorized credential sets into one pool.
+
+## Existing Compose installations
+
+The remaining commands in this document apply to the separate-backend Compose topology, not bundled mode. Before recreating an existing installation, migrate its legacy environment file without changing keys:
+
+```sh
+node scripts/migrate-secrets.js
+./router4u up -d --build
+```
+
+The migration writes private `secrets.json`, verifies the contents, and removes `.runtime/.env`. It refuses conflicting secrets. Do not mount an old Compose runtime into bundled mode: absolute storage/auth paths, backend hostnames, and persisted browser route overrides need an explicit migration, which is not automated.
+
+## Compose first installation
 
 From the repository root, prepare configuration and start the containers:
 
@@ -13,7 +67,7 @@ sh scripts/setup-docker.sh
 
 No model, account, or provider credential is needed at installation time. The initializer creates a disabled `personal` Codex connection with `models: []`. Authentication and model selection happen in the browser. The script prepares files; `up -d --build` creates and starts containers.
 
-The initializer refuses to overwrite an existing runtime. It downloads and verifies CLIProxyAPI 8.0.28 when necessary, generates private keys without printing them, and creates `.runtime/router4u.json`, `.runtime/cliproxyapi.yaml`, `.runtime/.env`, and `.runtime/compose.env`. Keep `.runtime` and `.tools` out of source control. Do not run the initializer against an existing installation to reset credentials.
+The initializer refuses to overwrite an existing runtime. It downloads and verifies CLIProxyAPI 8.0.28 when necessary, generates private keys without printing them, and creates `.runtime/router4u.json`, `.runtime/cliproxyapi.yaml`, `.runtime/secrets.json`, and `.runtime/compose.env`. Keep `.runtime` and `.tools` out of source control. Do not run the initializer against an existing installation to reset credentials.
 
 Both long-running services use `restart: unless-stopped`. Docker automatically restarts a crashed process and starts an enabled installation after daemon/host restart. An explicit `./router4u stop` leaves it stopped until `./router4u start` or `up -d`. The healthcheck reports liveness; an unhealthy status alone does not restart a running Docker container. `./router4u cli health` separately reports backend management and configured authentication status without making an inference request.
 
@@ -21,7 +75,7 @@ The wrapper is equivalent to `docker compose --env-file .runtime/compose.env`, a
 
 ## Open the control room
 
-Open `http://127.0.0.1:9470/` and sign in using `ROUTER4U_ADMIN_KEY` from the private `.runtime/.env` file.
+Open `http://127.0.0.1:9470/` and sign in using `ROUTER4U_ADMIN_KEY` from the private `.runtime/secrets.json` file.
 
 1. In **Connections → personal**, click **Connect Codex**, complete provider sign-in, and submit the callback URL if required. Check the returned status.
 2. Open **Set up models** and click **Load available models**. Select permitted models and click **Use selected models**. Empty discovery means the account/provider setup still needs attention; it does not authorize a wildcard route.
@@ -82,7 +136,7 @@ sh scripts/add-partition.sh work
 ./router4u up -d --build
 ```
 
-The helper creates `.runtime/partitions/work/`, generates separate backend/management keys, adds a disabled `work` route with no models, and writes `.runtime/partitions.compose.yaml`. It does not copy provider keys or credentials from the original partition. Compose recreates the gateway when its environment changes; existing ledger and project keys survive. Pause/drain before this planned restart if active streams must finish.
+The helper creates `.runtime/partitions/work/`, generates separate backend/management keys, adds a disabled `work` route with no models, and writes `.runtime/partitions.compose.yaml`. It does not copy provider keys or credentials from the original partition. Recreate the gateway after changing its secrets file; existing ledger and project keys survive. Pause/drain before this planned restart if active streams must finish.
 
 For API-key providers, use `sh scripts/add-partition.sh work --profile api_key`, edit the partition's backend configuration using the pinned CLIProxyAPI v8 schema, and restart that backend. Provider keys belong only in the private backend configuration.
 
@@ -114,7 +168,7 @@ Gateway configuration:
 ./router4u cli reload
 ```
 
-Reload is atomic and versioned. Active requests retain their admitted snapshots. Invalid changes leave the current configuration running. Listener, data directory, administrator-key variable, and maintenance interval changes require a restart. Environment-secret changes require `up -d --force-recreate gateway`; reload cannot change an existing process's environment.
+Reload is atomic and versioned. Active requests retain their admitted snapshots. Invalid changes leave the current configuration running. Listener, data directory, administrator-key variable, and maintenance interval changes require a restart. Secret-file changes require `up -d --force-recreate gateway`; reload cannot change an existing process's environment.
 
 For backend configuration or credential-set changes, pause and drain first. CLIProxyAPI watches its configuration/auth directory, but a deliberate `./router4u restart backend-work` is the deterministic reload procedure. Do not mutate global account selection while requests are in flight.
 
@@ -142,7 +196,7 @@ Stop every backend refresh owner before a complete installation backup. With gen
 ./router4u cli pause
 ./router4u cli api /admin/active
 ./router4u stop
-./router4u run --rm --no-deps maintenance backup-installation --file /backups/checkpoint --config /config/router4u.json --backend-config /config/cliproxyapi.yaml --auth-dir /auth --env-file /config/.env
+./router4u run --rm --no-deps maintenance backup-installation --file /backups/checkpoint --config /config/router4u.json --backend-config /config/cliproxyapi.yaml --auth-dir /auth --env-file /config/secrets.json
 ```
 
 The bundle contains the SQLite ledger/reservations/archive/audit/outbox, gateway and backend configuration, environment keys, auth directory, generated partitions, and Compose settings. Files have integrity hashes. The bundle contains live credentials and original payloads. Protect it like the running installation and enforce a separate backup retention policy.

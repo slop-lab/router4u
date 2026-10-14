@@ -9,8 +9,8 @@ if (positionals.length !== 1 || !/^[a-z][a-z0-9-]{0,31}$/.test(id ?? '') || !['c
 const config = JSON.parse(readFileSync('.runtime/router4u.json', 'utf8'));
 if (config.routes.some(route => route.id === id)) throw new Error('Route already exists');
 const keyName = `ROUTER4U_${id.toUpperCase().replaceAll('-', '_')}_BACKEND_KEY`; const managementName = `${keyName}_MANAGEMENT`;
-const env = readFileSync('.runtime/.env', 'utf8');
-if (env.includes(`${keyName}=`)) throw new Error('Partition environment name already exists');
+const secrets = JSON.parse(readFileSync('.runtime/secrets.json', 'utf8'));
+if (keyName in secrets) throw new Error('Partition environment name already exists');
 const path = `.runtime/partitions/${id}`;
 if (existsSync(path)) throw new Error('Partition already exists; inspect it before retrying');
 const backendKey = randomBytes(32).toString('base64url'); const management = randomBytes(32).toString('base64url');
@@ -26,7 +26,7 @@ compose.services[`backend-${id}`] = { extends: { file: './compose.yaml', service
   `\${ROUTER4U_RUNTIME_DIR:-./.runtime}/partitions/${id}/auth:/auth`,
 ] };
 config.routes.push({ id, profile, enabled: false, models: [], protocols: profile === 'api_key' ? ['responses', 'chat'] : ['responses'], base_url: `http://backend-${id}:8317/v1`, key_env: keyName, management_key_env: managementName, concurrency: 4 });
-for (const [file, content] of [['.runtime/.env', env + `\n${keyName}=${backendKey}\n${managementName}=${management}\n`], [composePath, JSON.stringify(compose, null, 2) + '\n'], ['.runtime/router4u.json', JSON.stringify(config, null, 2) + '\n']]) {
+for (const [file, content] of [['.runtime/secrets.json', JSON.stringify({ ...secrets, [keyName]: backendKey, [managementName]: management }, null, 2) + '\n'], [composePath, JSON.stringify(compose, null, 2) + '\n'], ['.runtime/router4u.json', JSON.stringify(config, null, 2) + '\n']]) {
   writeFileSync(file + '.pending', content); renameSync(file + '.pending', file);
 }
 console.log(`Created isolated backend-${id}. Run ./router4u up -d --build, then connect and configure ${id} in the web UI. No models are preselected; inference is disabled. If browser settings are active, add this route in Connections as described in docs/docker.md before login.`);

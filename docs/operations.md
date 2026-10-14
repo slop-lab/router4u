@@ -61,7 +61,7 @@ Revoking a principal or disabling a project affects new work. To stop existing w
 
 1. Pause new admissions and drain/cancel active requests. Stop Router4u and the relevant backend before making an installation backup.
 2. Run `node src/cli.js backup --file /protected/path/new-backup`. This requires a stopped gateway and creates a consistent SQLite snapshot containing ledger, reservations, manifests, payloads, audit, and outbox, plus gateway configuration.
-3. Separately copy `.runtime/.env`, the backend configuration, and its entire auth directory into the protected backup. The gateway backup command deliberately does not infer custom backend credential paths. Keep exactly one live refresh owner. Treat all backup files as secrets.
+3. Separately copy `.runtime/secrets.json`, the backend configuration, and its entire auth directory into the protected backup. The gateway backup command deliberately does not infer custom backend credential paths. Keep exactly one live refresh owner. Treat all backup files as secrets.
 4. To restore, stop all old processes. Restore the SQLite snapshot into the configured state directory as `router4u.sqlite`, restore gateway/backend configuration and credentials, and preserve file ownership/permissions. Use an empty state directory; never mix an old WAL/SHM file with a restored database. Restore any externally managed encryption keys before starting.
 5. Start one backend and one gateway. Startup reconciliation retains ambiguous work and never replays it. Check usage and representative authorized exchange exports. Run a deliberate live smoke request only after inspecting the recovered state.
 

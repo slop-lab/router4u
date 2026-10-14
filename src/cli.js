@@ -7,13 +7,14 @@ import { loadConfig } from './config.js';
 import { lockDirectory } from './lock.js';
 import { backupInstallation, restoreInstallation } from './installation-backup.js';
 import { Store } from './store.js';
+import { loadSecrets } from './runtime.js';
 
 process.umask(0o077);
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: {
   config: { type: 'string', default: '.runtime/router4u.json' }, route: { type: 'string', default: 'personal' },
   file: { type: 'string' }, scopes: { type: 'string' }, destination: { type: 'string' },
-  'env-file': { type: 'string', default: '.runtime/.env' }, 'dry-run': { type: 'boolean' },
+  'env-file': { type: 'string', default: '.runtime/secrets.json' }, 'dry-run': { type: 'boolean' },
   from: { type: 'string' }, to: { type: 'string' },
   'backend-config': { type: 'string', default: '.runtime/cliproxyapi.yaml' },
   'auth-dir': { type: 'string', default: '.runtime/auth' },
@@ -26,6 +27,9 @@ function inputJSON() { return JSON.parse(readFileSync(values.file ?? 0, 'utf8'))
 function envFile() {
   const path = resolve('.runtime/.env');
   if (existsSync(path)) process.loadEnvFile(path);
+  loadSecrets(resolve('.runtime/secrets.json'));
+  loadSecrets('/config/secrets.json');
+  loadSecrets(join(process.env.ROUTER4U_STATE_DIR ?? '/var/lib/router4u', 'secrets.json'));
 }
 async function admin(path, method = 'GET', body) {
   const key = process.env.ROUTER4U_ADMIN_KEY;
@@ -85,7 +89,7 @@ backup-installation --file NEW_DIRECTORY --config PATH --backend-config PATH --a
 restore-installation --file BACKUP_DIRECTORY --destination NEW_DIRECTORY
 api /admin/PATH [--method METHOD] [--file BODY.json]
 
-All online commands use --url and ROUTER4U_ADMIN_KEY. Local .runtime/.env is loaded if present.
+All online commands use --url and ROUTER4U_ADMIN_KEY. Local .runtime/secrets.json is loaded if present (legacy .env is also supported).
 Project keys are displayed only on issuance. Full exchange exports contain sensitive original data.`);
   envFile();
   if (command === 'serve') {
@@ -154,7 +158,7 @@ Project keys are displayed only on issuance. Full exchange exports contain sensi
       await backup(store.db, join(values.file, 'router4u.sqlite'));
       chmodSync(join(values.file, 'router4u.sqlite'), 0o600);
       cpSync(values.config, join(values.file, 'router4u.json'));
-      print('Gateway ledger and archive backed up. Separately back up the stopped backend auth directory, configuration, and .env. See docs/operations.md.');
+      print('Gateway ledger and archive backed up. Separately back up the stopped backend auth directory, configuration, and secrets.json. See docs/operations.md.');
     } finally { store.close(); unlock(); }
     return;
   }
