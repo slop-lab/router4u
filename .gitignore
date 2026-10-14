@@ -1,0 +1,8 @@
+node_modules/
+.local/
+.runtime/
+.tools/
+.env
+*.sqlite*
+*.log
+coverage/
