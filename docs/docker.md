@@ -174,3 +174,17 @@ Use `exec -T gateway node /app/src/cli.js export-usage my-app` for redirected au
 After ambiguous dispatch, token reservations and uncertain occupancy remain. Verify the upstream process has stopped before `release-occupancy REQUEST_ID --reason EVIDENCE`. Resolve usage separately using `resolve` or `observe-usage`; releasing physical occupancy does not release token reservations. Alerts are pull-based JSON for an operator/monitoring job; no email or chat notification service is configured.
 
 Use only your own eligible accounts and applications. Do not share or resell account access or bypass provider restrictions. You are responsible for provider terms and plan restrictions.
+
+## Codex login fails with an unknown certificate authority
+
+The backend image must include the system CA bundle. CLIProxyAPI uses Go's system trust store; Node's built-in roots do not supply trust roots to the backend executable. The backend Dockerfile installs `ca-certificates`, and deployment tests check the bundle in both default and additional account containers.
+
+If an image built without the bundle reports `x509: certificate signed by unknown authority` during token exchange, rebuild and recreate the services:
+
+```sh
+./router4u up -d --build
+```
+
+Then start a new **Connect Codex** attempt. Do not reuse the previous authorization code. Rebuilding preserves the mounted configuration and auth directories. This certificate repair does not establish that account authorization or inference will succeed.
+
+If the error persists on a network with TLS interception, the backend also needs the network's trusted CA installed in its system trust store. Do not disable TLS certificate verification.

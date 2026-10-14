@@ -37,6 +37,18 @@ const client = (service, key, path, body) => JSON.parse(compose(['exec', '-T', s
 try {
   compose(['up', '-d', '--no-build', 'gateway', 'backend', 'backend-extra', 'fake', 'project-a', 'project-b']);
   await waitReady();
+  // Go uses the system trust store; Node's bundled roots can hide a missing CA package.
+  for (const service of ['backend', 'backend-extra']) {
+    compose(['exec', '-T', service, 'node', '--input-type=module', '-e', `
+      import { readFileSync } from 'node:fs';
+      import { X509Certificate } from 'node:crypto';
+      import assert from 'node:assert/strict';
+      const bundle = readFileSync('/etc/ssl/certs/ca-certificates.crt', 'utf8');
+      const roots = bundle.match(/-----BEGIN CERTIFICATE-----[\\s\\S]*?-----END CERTIFICATE-----/g);
+      assert.ok(roots?.length > 0, 'Backend system CA bundle must contain trust roots');
+      for (const pem of roots) assert.ok(new X509Certificate(pem).ca, 'Trust root must be a CA');
+    `]);
+  }
   for (let attempt = 0; attempt < 60; attempt++) { try { cli('models', '--route', 'personal'); break; } catch (error) { if (attempt === 59) throw error; await delay(250); } }
   const initial = cli('api', '/admin/config');
   assert.deepEqual(initial.config.routes[0].models, []); assert.equal(initial.config.routes[0].enabled, false);
@@ -106,7 +118,7 @@ try {
   assert.equal(JSON.parse(restored.db.prepare("SELECT data FROM settings WHERE id='web_configuration'").get().data).daily_requests, 12345);
   assert.equal(restored.request(pendingId).accounting, 'reconciliation_required');
   assert.equal(restored.status('alpha').reserved_tokens, 4096); restored.close();
-  console.log('Deployment contracts passed: two projects, network isolation, rebuild, reload, automatic crash restart, durable unknown usage, and full installation backup/restore. No live provider was used.');
+  console.log('Deployment contracts passed: backend system CA bundles, two projects, network isolation, rebuild, reload, automatic crash restart, durable unknown usage, and full installation backup/restore. No live provider was used.');
 } catch (error) {
   process.stderr.write(compose(['logs', '--tail', '50', 'gateway', 'backend']));
   throw error;
