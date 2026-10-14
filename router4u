@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+cd "$(dirname "$0")"
+if [ ! -f .runtime/compose.env ]; then
+  echo 'Run sh scripts/setup-docker.sh MODEL first, or create .runtime/compose.env for an existing installation.' >&2
+  exit 1
+fi
+if [ "${1:-}" = cli ]; then
+  shift
+  set -- exec gateway node /app/src/cli.js "$@"
+fi
+if [ -f .runtime/partitions.compose.yaml ]; then
+  set -- -f compose.yaml -f .runtime/partitions.compose.yaml "$@"
+fi
+exec docker compose --env-file .runtime/compose.env "$@"

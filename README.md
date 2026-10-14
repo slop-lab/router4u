@@ -10,6 +10,18 @@ Supports native HTTP Responses and Chat Completions. Sign in with ChatGPT and le
 
 Use ChatGPT/Codex account connections only for yourself and your own applications. Do not share your credentials or project access with other people, resell access, pool unrelated users behind your account, or use this service to bypass provider limits. You are responsible for complying with each provider's current terms, account restrictions, and workspace policies. Technical support for an authentication method is not permission for every deployment. See [authentication and user responsibilities](docs/authentication.md).
 
+## Run with Docker
+
+```sh
+sh scripts/setup-docker.sh YOUR_ACCOUNT_MODEL codex
+./router4u up -d --build
+./router4u cli auth codex
+```
+
+Follow [Docker installation and account operations](docs/docker.md) for callback submission, ChatGPT binding, project keys, extra accounts, configuration reload, and complete backups. Both long-running services use `restart: unless-stopped`; state and credentials persist outside containers. Additional isolated accounts can be prepared with `sh scripts/add-partition.sh work YOUR_ACCOUNT_MODEL codex`.
+
+The initializer refuses to overwrite an existing installation. Default application keys cannot export transcripts; issue an explicit `exchange:export` principal when needed.
+
 ## Run an offline demo
 
 Requires Node.js **24.19.0 or newer in the 24.x series**. Runtime code has no npm dependencies. SQLite is provided by Node. Keep state on a local filesystem.
@@ -87,12 +99,17 @@ For an enforced network-free test run after downloads:
 
 ```sh
 sh scripts/test-offline.sh
+docker build -t router4u:local .
+docker build -f deploy/backend.Dockerfile -t router4u-backend:8.0.28 .tools
+npm run test:deployment
+npm run benchmark
 ```
 
 The Docker test container has no external network, a read-only repository, and writable temporary storage. It contains no real provider credentials in its environment.
 
 ## Interfaces and operations
 
+- [Docker setup, additional accounts, and reload](docs/docker.md)
 - [API and policy reference](docs/api.md)
 - [pi and Vercel AI SDK examples](docs/clients.md)
 - [Recovery, backups, retention, and deployment](docs/operations.md)

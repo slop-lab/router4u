@@ -26,6 +26,9 @@ export class Store {
       CREATE INDEX IF NOT EXISTS requests_project_period ON requests(project_id,period);
       CREATE INDEX IF NOT EXISTS requests_created ON requests(created);
       CREATE INDEX IF NOT EXISTS requests_service_period ON requests(service_period);
+      CREATE INDEX IF NOT EXISTS requests_route ON requests(json_extract(data,'$.route.id'));
+      CREATE INDEX IF NOT EXISTS requests_account ON requests(json_extract(data,'$.route.account_id'));
+      CREATE INDEX IF NOT EXISTS requests_occupancy ON requests(json_extract(data,'$.occupancy'));
       CREATE TABLE IF NOT EXISTS ledger(id TEXT PRIMARY KEY, request_id TEXT, project_id TEXT NOT NULL, kind TEXT NOT NULL, amount INTEGER NOT NULL, created INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS captures(request_id TEXT PRIMARY KEY REFERENCES requests(id), data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS chunks(request_id TEXT NOT NULL REFERENCES captures(request_id), direction TEXT NOT NULL, sequence INTEGER NOT NULL, payload BLOB NOT NULL, hash TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(request_id,direction,sequence));
@@ -115,9 +118,11 @@ export class Store {
       active: this.db.prepare('SELECT COUNT(*) AS count FROM requests WHERE project_id=? AND active=1').get(projectId).count,
       outstanding_all_periods: this.db.prepare('SELECT COUNT(*) AS count,COALESCE(SUM(reserved),0) AS reserved_tokens FROM requests WHERE project_id=? AND tokens IS NULL').get(projectId),
       uncertainty: 'Usage is observed at the backend response boundary; internal attempts may be hidden.',
+      additional_budgets: this.budgetStatus(projectId, project.policy.budgets),
+      provider_quota_snapshots: this.accounts().filter(account => account.configured && project.policy.routes.includes(account.route_id)).map(account => ({ account_id: account.id, quota: account.observation?.quota ?? { status: 'unavailable', observed_at: null, source: null } })),
       observed_at: this.clock(), paused: this.paused() };
   }
-  admit(principal, route, protocol, config) {
+  admit(principal, route, protocol, config, metadata = {}) {
     return this.transaction(() => {
       const project = this.project(principal.project_id);
       const policy = project.policy;
@@ -140,8 +145,8 @@ export class Store {
         throw new ServiceError(429, 'local_quota_exhausted', 'Estimated token allowance exhausted', project.id, true);
       }
       const id = randomUUID();
-      const record = { id, principal_id: principal.id, project_id: project.id, period, service_period: servicePeriod,
-        policy_revision: project.revision, policy, configuration_revision: config.revision ?? null, route: { id: route.id, profile: route.profile, account_id: route.account_id ?? null,
+      const record = { ...metadata, id, principal_id: principal.id, project_id: project.id, period, service_period: servicePeriod,
+        policy_revision: project.revision, policy, service_limits: { archive_max_bytes: config.archive_max_bytes, max_response_bytes: config.max_response_bytes }, configuration_revision: config.revision ?? null, route: { id: route.id, profile: route.profile, account_id: route.account_id ?? null,
           account_attribution: route.account_id ? 'verified_exclusive_partition' : 'unknown', base_url: route.base_url },
         occupancy: 'local', capture_ms: 0, protocol, created: now, admission: 'admitted', execution: 'pending', delivery: 'not_started', accounting: 'reserved',
         capture: policy.recording === 'metadata' ? 'disabled_by_policy' : 'pending', attempt_id: randomUUID(),
@@ -171,7 +176,7 @@ export class Store {
   }
   dispatch(id, model) {
     return this.transaction(() => {
-      const record = this.update(id, { execution: 'dispatched', requested_model: model, dispatched_at: this.clock() });
+      const record = this.update(id, { execution: 'dispatched', requested_model: model, resolved_model: model, dispatched_at: this.clock() });
       this.ledger(`${id}:dispatch`, record, 'dispatch_intent', 0);
       return record;
     });
@@ -201,7 +206,9 @@ export class Store {
       this.settleBudgets(id, tokens);
       this.ledger(randomUUID(), record, 'operator_adjustment', tokens, { reason });
       this.audit('operator', 'usage.resolve', id, { tokens, reason });
-      return this.update(id, { accounting: 'settled', usage: { total: tokens, source: 'operator_adjustment', reason } });
+      const updated = this.update(id, { accounting: 'settled', usage: { total: tokens, source: 'operator_adjustment', scope: 'request', completeness: 'operator_resolved', observed_at: this.clock(), reason } });
+      this.db.prepare('INSERT INTO outbox(created,request_id,event) VALUES(?,?,?)').run(this.clock(), id, JSON.stringify({ type: 'usage.resolved', request: updated }));
+      return updated;
     });
   }
   recover() {
@@ -226,8 +233,8 @@ export class Store {
       const manifest = this.manifest(id);
       if (manifest.recording === 'metadata' || ['partial', 'failed'].includes(manifest.state)) return;
       const used = this.db.prepare('SELECT bytes FROM archive_usage WHERE id=1').get().bytes;
-      if (used + payload.length > this.archiveMaxBytes) throw new ServiceError(507, 'recording_failed', 'Archive capacity exhausted');
       const record = this.request(id);
+      if (used + payload.length > (record.service_limits?.archive_max_bytes ?? this.archiveMaxBytes)) throw new ServiceError(507, 'recording_failed', 'Archive capacity exhausted');
       if (record.policy.archive_max_bytes) {
         const projectBytes = this.db.prepare("SELECT COALESCE(SUM(json_extract(c.data,'$.bytes')),0) AS bytes FROM captures c JOIN requests r ON r.id=c.request_id WHERE r.project_id=?").get(record.project_id).bytes;
         if (projectBytes + payload.length > record.policy.archive_max_bytes) throw new ServiceError(507, 'recording_failed', 'Project archive capacity exhausted');
@@ -254,6 +261,7 @@ export class Store {
       const record = this.request(id);
       requireValue(record?.finished_at, 'Only finished captures can be removed');
       const manifest = this.manifest(id);
+      if (['deleted', 'expired'].includes(manifest.state)) return manifest;
       this.db.prepare('DELETE FROM chunks WHERE request_id=?').run(id);
       this.db.prepare('UPDATE archive_usage SET bytes=bytes-? WHERE id=1').run(manifest.bytes);
       this.audit('operator', expired ? 'capture.expire' : 'capture.delete', id);

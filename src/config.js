@@ -30,6 +30,8 @@ export function validatePolicy(input) {
 }
 
 export function validateConfig(input) {
+  requireValue(input && typeof input === 'object' && !Array.isArray(input), 'Configuration must be an object');
+  requireValue(Object.keys(input).every(key => ['host', 'port', 'data_dir', 'admin_key_env', 'max_request_bytes', 'max_response_bytes', 'archive_max_bytes', 'concurrency', 'daily_requests', 'daily_tokens', 'routes', 'requests_per_minute', 'tokens_per_minute', 'budgets', 'maintenance_interval_ms', 'accounts', 'allow_private_http'].includes(key)), 'Unknown configuration field');
   const config = {
     host: '127.0.0.1', port: 9470, data_dir: '.runtime/data', admin_key_env: 'ROUTER4U_ADMIN_KEY',
     max_request_bytes: 2097152, max_response_bytes: 16777216, archive_max_bytes: 1073741824,
@@ -73,7 +75,10 @@ export function validateConfig(input) {
     requireValue(backendURL.protocol === 'https:' || ['127.0.0.1', 'localhost', '[::1]'].includes(backendURL.hostname) || config.allow_private_http === true, 'Non-loopback HTTP requires allow_private_http');
     requireValue(!route.account_id || (typeof route.account_id === 'string' && route.exclusive_account === true && typeof route.credential_name === 'string' && typeof route.management_key_env === 'string'), 'Account attribution requires an exclusive backend partition');
   }
-  for (const account of config.accounts) requireValue(seen.has(account.route_id), 'Account references unknown route');
+  for (const account of config.accounts) {
+    requireValue(seen.has(account.route_id), 'Account references unknown route');
+    if (account.concurrency) requireValue(config.routes.some(route => route.id === account.route_id && route.account_id === account.id && route.exclusive_account === true), 'Account concurrency requires a verified exclusive route');
+  }
   for (const route of config.routes) if (route.account_id && config.accounts.length) {
     const account = config.accounts.find(item => item.id === route.account_id);
     requireValue(account && account.route_id === route.id && account.credential_name === route.credential_name, 'Exclusive route must match its account registry binding');

@@ -1,5 +1,7 @@
 # Deployment and operations
 
+For the ready-to-run Compose installation, account partition helper, and exact Docker commands, see [Docker operations](docker.md).
+
 ## Supported installation
 
 Run one Node.js 24 gateway and one or more dedicated CLIProxyAPI v8.0.28 partitions on a trusted single-user host. SQLite state belongs to the shared installation, outside project container lifecycles. Do not place the database on NFS or share it among gateway replicas. The service lock prevents normal accidental startup of a second CLI process against the same state directory.
@@ -24,7 +26,7 @@ Mount a protected configuration file at `/config/router4u.json`, durable writabl
 
 ## Route and account isolation
 
-Each route has an explicit model/protocol allowlist, profile, backend base URL, and names of environment variables holding backend keys. Route definitions change on service restart; project policy changes are versioned through the admin API. Existing requests retain their policy/route snapshots.
+Each route has an explicit model/protocol allowlist, profile, backend base URL, and names of environment variables holding backend keys. Route/account definitions can be validated and atomically reloaded from the configuration file; revisions are durable. Project policy changes are versioned through the admin API. Existing requests retain their policy/route snapshots.
 
 Use a separate backend/auth directory for each different allowed account set. Never toggle global backend account enablement around concurrent requests. Do not use aliases as an authorization boundary or configure model pools that silently change the selected upstream model. Keep paid-provider fallback absent unless explicitly implemented and authorized in a future route contract.
 
@@ -36,7 +38,7 @@ This verifies a dedicated-partition configuration, not an internal per-attempt s
 
 The initial defaults bound request bodies to 2 MiB, response bodies to 16 MiB, an individual SSE event to 1 MiB, active gateway requests to 32, and logical archive payloads to 1 GiB. Requests are rejected rather than placed in an implicit scheduling queue. Streaming uses awaited writes and never buffers the full response to produce a transcript. Required SQLite commits can add latency per chunk; benchmark your local disk before raising concurrency.
 
-SQLite payloads are in a separate table from metadata. Full exports necessarily materialize the selected bounded exchange; at most two exports may be in flight. Local synchronous database work and exports share the process; this installation is intended for modest personal workloads. Gateway and upstream latency are not separately exported as a metrics system yet. Increase scale only after measuring storage and stream behavior.
+SQLite payloads are in a separate table from metadata. Full exports necessarily materialize the selected bounded exchange; at most two exports may be in flight. Local synchronous database work and exports share the process; this installation is intended for modest personal workloads. The operator metrics endpoint reports gateway lifetime, backend time to first byte, and capture time separately. These are request-boundary measurements, not provider-internal execution measurements. Increase scale only after measuring storage and stream behavior.
 
 The archive limit measures retained payload bytes, not database/WAL/index overhead or available disk capacity. Monitor actual disk space too. Logical deletion does not immediately shrink SQLite files. After stopping the service and taking a backup, an operator may checkpoint/vacuum SQLite using standard tools. Physical secure erasure, encrypted backups, and host key recovery are deployment responsibilities. Router4u does not claim encryption at rest.
 
@@ -63,12 +65,23 @@ Revoking a principal or disabling a project affects new work. To stop existing w
 4. To restore, stop all old processes. Restore the SQLite snapshot into the configured state directory as `router4u.sqlite`, restore gateway/backend configuration and credentials, and preserve file ownership/permissions. Use an empty state directory; never mix an old WAL/SHM file with a restored database. Restore any externally managed encryption keys before starting.
 5. Start one backend and one gateway. Startup reconciliation retains ambiguous work and never replays it. Check usage and representative authorized exchange exports. Run a deliberate live smoke request only after inspecting the recovered state.
 
-The automated backup test restores payloads and unresolved reservations and verifies integrity. Live provider refresh after credential restoration requires an operator validation; restoring an old rotating refresh token can require reauthorization.
+The gateway backup test restores payloads and unresolved reservations and verifies integrity. `backup-installation` additionally bundles credentials, backend configuration, environment keys, and generated extra partitions; `restore-installation` verifies all file hashes and stages an entirely new runtime. The Docker lifecycle suite exercises this complete path using inert credentials. Live provider refresh after credential restoration requires an operator validation; restoring an old rotating refresh token can require reauthorization.
 
 ## Retention and upgrade
 
-Retention is operator-driven. `node src/cli.js delete-exchange REQUEST_ID` deletes a completed exchange's payloads while preserving accounting and a deletion manifest. No automatic eviction occurs when the archive fills. Required capture rejects/stops work; best-effort capture reports gaps. Backups retain deleted content until their own expiry policy removes it.
+Retention supports per-project `retention_days`, booked at admission. A bounded maintenance sweep expires completed payloads automatically; `retention` triggers a sweep manually. Existing request retention snapshots do not change when policy is edited. `node src/cli.js delete-exchange REQUEST_ID` deletes a completed exchange's payloads while preserving accounting and a deletion manifest. No automatic eviction occurs when the archive fills. Required capture rejects/stops work; best-effort capture reports gaps. Backups retain deleted content until their own expiry policy removes it.
 
 Before changing CLIProxyAPI, back up state, inspect the new source/release, update the pinned version and checksum intentionally, and run `npm test`, `npm run test:backend`, and `npm run test:clients`. Test the original and upgraded configuration before rolling back. Router4u rejects database schema versions newer than it understands; it does not silently downgrade the database.
 
 All committed documentation is English. `.local` is private reference material excluded from Git and the Docker context. Runtime tokens, project keys, backend binaries, and SQLite files are also excluded.
+
+
+## Operational administration
+
+`reload --dry-run` validates the edited gateway file; `reload` commits a new revision. Invalid changes leave the current service configuration intact. The data directory/listener/admin-key-variable/maintenance interval require a process restart. Replacing environment secrets requires recreating the container. Existing streams retain their policy and route snapshot.
+
+`effective-policy PROJECT` explains applicable project, service, and route limits and capability exclusions. `metrics`, `alerts`, and `health` are authenticated operator reads. Account inspection stores sanitized observations with freshness and drift; passive provider quota headers are separate from local token budgets. No health probe performs inference. Pull alerts into your monitoring system; Router4u does not send external notifications.
+
+`export-usage PROJECT` walks cursor-paginated request metadata and emits NDJSON. Original payload export separately requires `exchange:export`. A default principal or a usage-only principal cannot retrieve original transcripts. Schema-v1 principals inherit the new restricted default scopes after migration; explicitly issue an export-capable key if needed.
+
+Unknown physical occupancy survives cancellation/crash independently from token reservations. Configured route/account concurrency counts uncertain occupancy until `release-occupancy ID --reason EVIDENCE`. This is an operator assertion, not proof synthesized from a timeout. `observe-usage ID --file FILE` accepts a stable source/event ID and a verified request total, corrects the ledger by the delta, and deduplicates retries. Conflicting repeats are rejected. It is not a backend attempt journal and does not imply hidden attempt visibility.

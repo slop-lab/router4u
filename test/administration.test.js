@@ -158,3 +158,54 @@ test('Credential refresh delegates once and strips token-bearing backend results
   const result = await adapter.credentialAction('owner.json', 'refresh');
   assert.equal(result.completed, true); assert.equal(provider.calls.length, 1); assert.doesNotMatch(JSON.stringify(result), /inert-never-return/);
 });
+
+test('Rolling budgets use admission time while calendar bookings survive month rollover', async context => {
+  const setup = await fixture(context); const store = setup.gateway.store;
+  let now = Date.parse('2026-01-31T23:59:59Z'); store.clock = () => now;
+  store.putProject('alpha', { routes: ['local'], budgets: [{ id: 'rolling', resource: 'requests', period: 'rolling', duration_ms: 1000, limit: 1, mode: 'strict' }, { id: 'calendar', resource: 'tokens', period: 'month', limit: 10000 }] });
+  const principal = store.authenticate(setup.alpha.key);
+  const first = store.admit(principal, setup.gateway.config.routes[0], 'responses', setup.gateway.config);
+  assert.throws(() => store.admit(principal, setup.gateway.config.routes[0], 'responses', setup.gateway.config), /exhausted/);
+  now += 1001; store.settle(first.id, { total: 15, source: 'fixture' }, { execution: 'completed' });
+  assert.equal(store.db.prepare("SELECT period FROM budget_bookings WHERE request_id=? AND budget_id='calendar'").get(first.id).period, '2026-01');
+  assert.equal(store.status('alpha').additional_budgets.find(item => item.id === 'calendar').remaining, 10000);
+  assert.ok(store.admit(principal, setup.gateway.config.routes[0], 'responses', setup.gateway.config));
+});
+
+test('Correlation metadata remains bounded diagnostics and cannot change the accounting owner', async context => {
+  const setup = await fixture(context);
+  const response = await setup.call('/v1/responses', { body: payload, headers: { 'x-correlation-ref': 'beta', 'x-installation-id': 'instance-2' } }); await response.text();
+  const record = setup.gateway.store.request(response.headers.get('x-router4u-request-id'));
+  assert.equal(record.project_id, 'alpha'); assert.equal(record.correlation_ref, 'beta'); assert.equal(record.installation_id, 'instance-2');
+  assert.equal((await setup.call('/v1/responses', { body: payload, headers: { 'x-correlation-ref': 'x'.repeat(257) } })).status, 400);
+});
+
+test('Passive quota snapshots retain source time and filter nonquota credential fields', async context => {
+  const { BackendManagement } = await import('../src/backend.js'); const { fakeProvider } = await import('./helpers.js');
+  const provider = await fakeProvider((request, response) => response.end(JSON.stringify({ files: [{ name: 'owner.json', quota: { observed_at: '2026-01-01T00:00:00Z', signals: { 'X-Codex-Primary-Used-Percent': '12', Authorization: 'inert-secret', 'X-Codex-Turn-State': 'inert-secret' } }, refresh_token: 'inert-secret' }] })));
+  context.after(() => provider.close());
+  const metadata = await new BackendManagement({ base_url: provider.url, management_key_env: 'KEY' }, { KEY: 'inert' }).credentials();
+  assert.equal(metadata[0].quota.observed_at, '2026-01-01T00:00:00Z'); assert.equal(metadata[0].quota.signals['X-Codex-Primary-Used-Percent'], '12');
+  assert.doesNotMatch(JSON.stringify(metadata), /inert-secret/);
+});
+
+test('Global archive edits affect new admissions without mutating existing capture snapshots', async context => {
+  const setup = await fixture(context); const store = setup.gateway.store; const principal = store.authenticate(setup.alpha.key);
+  const config = setup.gateway.config;
+  const first = store.admit(principal, config.routes[0], 'responses', config);
+  const next = { ...config, archive_max_bytes: 1 }; store.archiveMaxBytes = 1;
+  assert.doesNotThrow(() => store.append(first.id, 'request', Buffer.from('older admitted body')));
+  const second = store.admit(principal, next.routes[0], 'responses', next);
+  assert.throws(() => store.append(second.id, 'request', Buffer.from('new body')), /capacity exhausted/);
+});
+
+test('Observable-attempt budgets release reservations for work that never dispatches', async context => {
+  const setup = await fixture(context, { policy: { budgets: [{ id: 'attempts', resource: 'observed_attempts', period: 'day', limit: 1 }] } });
+  const store = setup.gateway.store; const principal = store.authenticate(setup.alpha.key); const config = setup.gateway.config;
+  const first = store.admit(principal, config.routes[0], 'responses', config);
+  store.settle(first.id, { total: 0, source: 'not_dispatched' }, { execution: 'failed' });
+  const second = store.admit(principal, config.routes[0], 'responses', config); store.dispatch(second.id, 'test-model');
+  store.settle(second.id, null, { execution: 'outcome_unknown' });
+  assert.equal(store.status('alpha').additional_budgets[0].settled, 1);
+  assert.throws(() => store.admit(principal, config.routes[0], 'responses', config), /exhausted/);
+});

@@ -15,3 +15,6 @@ jobs:
       - run: npm run backend:install
       - run: docker pull node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df
       - run: sh scripts/test-offline.sh
+      - run: docker build -t router4u:local .
+      - run: docker build -f deploy/backend.Dockerfile -t router4u-backend:8.0.28 .tools
+      - run: npm run test:deployment

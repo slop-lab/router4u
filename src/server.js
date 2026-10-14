@@ -64,6 +64,7 @@ export function createGateway(input, options = {}) {
       const replacement = next.accounts.find(item => item.id === account.id);
       if (replacement) requireValue(replacement.route_id === account.route_id && replacement.credential_name === account.credential_name, 'Account identity is immutable; add a new account ID for a new binding');
     }
+    store.validateBudgetDefinitions('*', next.budgets);
     if (dryRun) return { valid: true, applied: false, routes: next.routes.map(capabilities) };
     next.revision = store.configuration(next).revision;
     config = next; store.archiveMaxBytes = next.archive_max_bytes;
@@ -121,7 +122,12 @@ export function createGateway(input, options = {}) {
     backendHeaders(route, environment);
     if (route.account_id) await new BackendManagement(route, environment).verifyExclusiveAccount();
     if (config !== inferenceConfig) throw new ServiceError(503, 'configuration_changed', 'Configuration changed during account verification; retry admission');
-    const record = store.admit(principal, route, protocol, config);
+    const metadata = {};
+    for (const [header, field] of [['x-correlation-ref', 'correlation_ref'], ['x-installation-id', 'installation_id']]) {
+      const value = request.headers[header];
+      if (value !== undefined) { requireValue(typeof value === 'string' && Buffer.byteLength(value) <= 256, `${header} must be at most 256 bytes`); metadata[field] = value; }
+    }
+    const record = store.admit(principal, route, protocol, config, metadata);
     const id = record.id;
     response.setHeader('x-router4u-request-id', id);
     const controller = new AbortController();
@@ -142,7 +148,7 @@ export function createGateway(input, options = {}) {
       dispatched = true;
       upstream = await dispatch(route, protocol, raw, controller.signal, id, environment);
       const streaming = upstream.headers.get('content-type')?.includes('text/event-stream') ?? false;
-      observer = new ResponseObserver(protocol, streaming, config.max_response_bytes);
+      observer = new ResponseObserver(protocol, streaming, inferenceConfig.max_response_bytes);
       const manifest = store.manifest(id);
       store.captureState(id, manifest.state, { response_status: upstream.status,
         content_type: upstream.headers.get('content-type'), upstream_request_id: upstream.headers.get('x-request-id') });
@@ -153,7 +159,7 @@ export function createGateway(input, options = {}) {
       if (streaming) store.update(id, { execution: 'streaming' });
       let firstByte = true;
       for await (const chunk of upstream.body) {
-        if (firstByte) { store.update(id, { first_byte_at: Date.now() }); firstByte = false; }
+        if (firstByte) { store.update(id, { first_byte_at: store.clock() }); firstByte = false; }
         observer.push(chunk);
         capture(id, 'response', chunk);
         await writeChunk(response, chunk, controller.signal);

@@ -1,6 +1,6 @@
 # API and policy reference
 
-All inference, reads, and cancellation require `Authorization: Bearer PROJECT_KEY`. Operator endpoints require the separate operator key. No cookies or browser session authentication are used. Health endpoints are unauthenticated and disclose no credentials or project data.
+All inference, reads, and cancellation require the relevant principal scope and `Authorization: Bearer PROJECT_KEY`. Operator endpoints require the separate operator key. No cookies or browser session authentication are used. Health endpoints are unauthenticated and disclose no credentials or project data.
 
 ## Application endpoints
 
@@ -83,3 +83,64 @@ Cancellation releases gateway concurrency when the local request ends, but an un
 The archive stores chunk order within `request` and `response`, timestamps, body bytes, hashes, status, and content type. It excludes credentials/HTTP headers, network packet framing, provider-internal data, and bytes behind remote URLs. Fetch may decode HTTP transfer/content encodings; the boundary is application-body bytes, not a full wire capture. A complete body capture can contain a failed or prematurely ended provider stream. Execution and capture completeness are independent.
 
 Service rejections use `error.type=router4u_error` with `code`, `scope`, `retryable`, and `request_id` when assigned. They distinguish authorization, local quota/capacity, unsupported capability, recording failure, deadline, cancellation, and unavailable backend. Upstream error bodies and HTTP status are forwarded; `X-Router4u-Error-Category` distinguishes an upstream 429 from a local rejection. After response headers have been sent, gateway failures terminate the connection instead of appending a different protocol's JSON error or replacement completion. Inspect the request record for the local failure.
+
+
+## Principal scopes
+
+Issue keys with `{"scopes":["inference","usage:read"]}` on the key endpoint, or use CLI `--scopes`. Allowed scopes are `inference`, `usage:read`, `requests:read`, `requests:cancel`, and `exchange:export`. Defaults include all except `exchange:export`. Project ownership checks apply in addition to scope checks. Administrator credentials remain separate. Export accesses are audited; scoped metadata access does not grant the original bodies.
+
+## Additional operational endpoints
+
+| Method | Path | Behavior |
+|---|---|---|
+| GET | `/admin/config` | Current configuration and revision |
+| POST | `/admin/config/reload` | Read configured file; `{"dry_run":true}` validates without applying |
+| GET | `/admin/config/revisions` | Latest 200 revision identifiers and timestamps |
+| GET | `/admin/accounts` | Stable configured account metadata and last observations |
+| GET | `/admin/accounts/ID/inspect` | Query backend, record sanitized health/quota/drift |
+| POST | `/admin/accounts/ID/enable` or `/disable` | Delegate status change to backend |
+| POST | `/admin/accounts/ID/remove` | Remove the referenced backend credential |
+| POST | `/admin/accounts/ID/refresh` | Ask backend lifecycle owner to refresh; tokens are not returned |
+| POST | `/admin/accounts/ID/reconnect` | Start backend-owned Codex login |
+| GET | `/admin/projects/ID/effective-policy` | Applicable scopes, limits, and capability boundaries |
+| GET | `/admin/projects/ID/history` | Cursor-paginated request metadata |
+| GET | `/admin/projects/ID/usage-history` | Period usage aggregates over a specified interval |
+| GET | `/admin/occupancy` | Uncertain physical executions |
+| POST | `/admin/requests/ID/release-occupancy` | Audited physical occupancy release, requiring `reason` |
+| POST | `/admin/requests/ID/observations` | Idempotent verified usage correction |
+| POST | `/admin/retention/run` | Expire up to 100 completed captures |
+| GET | `/admin/service-usage` | Service metrics and remaining additional budgets |
+| GET | `/admin/metrics` | Counts, uncertainty, archive use, and latency measurements |
+| GET | `/admin/alerts` | Actionable uncertainty, archive capacity, and account drift alerts |
+| GET | `/admin/health` | Local, management, and configured-authentication status |
+
+Project equivalents `/v1/history`, `/v1/usage-history`, and `/v1/effective-policy` are authorized to the caller's project. History accepts `cursor` (default 0), `limit` (1–200), `from`, and `to` (UTC epoch milliseconds). Responses include `next_cursor`; null ends iteration. Pin `to` for a stable time range. History is ordered by an insertion cursor, so equal timestamps do not lose records. Aggregates group by the request's originally booked project period.
+
+A usage correction body is `{"source":"provider_record","event_id":"stable-source-id","tokens":123,"reason":"Evidence for this request total"}`. Only finished requests can be corrected. Repeating the same source/event is idempotent; conflicting totals or request IDs are rejected. The total replaces the previous request total through an audited ledger delta, never an additional duplicate charge. Token reservation settlement does not release uncertain physical occupancy.
+
+Account mutations require paused admissions, drained work, and no uncertain occupancy. Configured desired state is not silently rewritten by a backend operation. Inspection is explicit; cached observations retain their collection timestamp and do not claim continuous drift detection. Update configuration deliberately and inspect drift. Passive quota snapshots contain their backend source, original observation time, collection time, and allowlisted signals; missing snapshots remain unavailable. They are never calculated from local token use.
+
+## Extended limits and retention
+
+Project policy additionally accepts nullable positive `tokens_per_minute`, `archive_max_bytes`, `retention_days`, and a `budgets` array. Service configuration accepts request/token rates and budgets. Routes accept `concurrency` and `enabled`; registered exclusive accounts may have concurrency limits. No implicit waiting queue is introduced.
+
+```json
+{
+  "routes": ["personal"],
+  "retention_days": 30,
+  "archive_max_bytes": 536870912,
+  "tokens_per_minute": 50000,
+  "budgets": [
+    {"id":"month-tokens","resource":"tokens","period":"month","timezone":"Asia/Seoul","limit":2000000,"mode":"estimate"},
+    {"id":"hour-requests","resource":"requests","period":"rolling","duration_ms":3600000,"limit":100,"mode":"strict"}
+  ]
+}
+```
+
+Budget resources are `requests`, `tokens`, and `observed_attempts`; periods are `day`, `month`, or `rolling`. A conservative observable-attempt reservation is made with admission and is released if the request never reaches dispatch. A dispatched backend call counts once even if its usage is unknown. It does not count hidden backend retries. Only local request budgets can use `strict`; token and observable-attempt budgets cannot establish a strict upstream bound. Observe-mode budgets record without rejecting for that budget. Explicit additional budgets apply independently of legacy daily limits.
+
+The resource, period, duration, and timezone of a budget ID are immutable. Limits and enforcement mode may change. New budget IDs backfill existing request usage/reservations so policy edits do not reset history. Calendar bookings remain in their admission period; rolling bookings use admission time. All mandatory scopes reserve in one transaction.
+
+Retention expiry is booked from admission time and applies only after local execution finishes. Expiry, explicit deletion, incomplete recording, and intentional metadata-only capture remain distinct. Account/route occupancy may outlive local execution; token reservations are independent. The capture manifest inventories observable input multimodal items without fetching references; the original body remains authoritative, and inventory completeness is explicit.
+
+`X-Correlation-Ref` and `X-Installation-Id` are optional diagnostic metadata, each limited to 256 bytes. They do not affect authorization or budget ownership. The uncertain-occupancy endpoint returns up to 200 oldest unresolved items; releasing them exposes the next batch. Metrics count all unresolved items.

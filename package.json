@@ -12,7 +12,9 @@
     "test:backend": "node --test test/backend.integration.js",
     "test:clients": "node --test test/clients.integration.js",
     "demo": "node scripts/demo.js",
-    "backend:install": "node scripts/install-backend.js"
+    "backend:install": "node scripts/install-backend.js",
+    "test:deployment": "node scripts/test-deployment.js",
+    "benchmark": "node scripts/benchmark.js"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.93",

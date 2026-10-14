@@ -10,6 +10,9 @@ export const operations = {
     if (current && JSON.stringify(current.config) === JSON.stringify(config)) return current;
     return this.transaction(() => {
       this.ensureBudgetDefinitions('*', config.budgets);
+      for (const account of config.accounts) { const previous = this.account(account.id);
+        requireValue(!previous || (previous.route_id === account.route_id && previous.credential_name === account.credential_name), 'Account identity is immutable; create a new account ID');
+      }
       const snapshot = { revision: randomUUID(), applied_at: this.clock(), config };
       this.db.prepare('INSERT INTO configuration_revisions VALUES(?,?,?)').run(snapshot.revision, snapshot.applied_at, JSON.stringify(config));
       this.db.prepare("INSERT INTO settings VALUES('configuration',?) ON CONFLICT(id) DO UPDATE SET data=excluded.data").run(JSON.stringify(snapshot));
@@ -44,7 +47,7 @@ export const operations = {
       SUM(CASE WHEN tokens IS NULL THEN 1 ELSE 0 END) AS provisional_or_unknown FROM requests WHERE project_id=? AND created>=? AND created<=? GROUP BY period ORDER BY period`).all(projectId, from, to),
       observed_at: this.clock(), provider_quota: { status: 'unavailable', source: null, observed_at: null }, completeness: 'request_only' };
   },
-  occupancy() { return this.db.prepare("SELECT data FROM requests WHERE json_extract(data,'$.occupancy')='uncertain' ORDER BY created").all().map(decode); },
+  occupancy() { return this.db.prepare("SELECT data FROM requests WHERE json_extract(data,'$.occupancy')='uncertain' ORDER BY created LIMIT 200").all().map(decode); },
   releaseOccupancy(id, reason) {
     requireValue(typeof reason === 'string' && reason.trim().length > 0 && reason.length <= 2000, 'Evidence/reason required');
     return this.transaction(() => {
@@ -57,9 +60,9 @@ export const operations = {
     if (route.enabled === false) throw new ServiceError(403, 'route_disabled', 'Route is disabled');
     const account = route.account_id ? this.account(route.account_id) : null;
     if (account && (!account.configured || account.enabled === false)) throw new ServiceError(503, 'account_unavailable', 'Account is disabled');
-    const occupancy = this.db.prepare("SELECT data FROM requests WHERE active=1 OR json_extract(data,'$.occupancy')='uncertain'").all().map(decode);
-    if ((route.concurrency && occupancy.filter(item => item.route.id === route.id).length >= route.concurrency) ||
-        (account?.concurrency && occupancy.filter(item => item.route.account_id === account.id).length >= account.concurrency)) {
+    const occupied = (field, id) => this.db.prepare(`SELECT COUNT(*) AS count FROM requests WHERE json_extract(data,'$.route.${field}')=? AND (active=1 OR json_extract(data,'$.occupancy')='uncertain')`).get(id).count;
+    if ((route.concurrency && occupied('id', route.id) >= route.concurrency) ||
+        (account?.concurrency && occupied('account_id', account.id) >= account.concurrency)) {
       throw new ServiceError(429, 'local_capacity_exhausted', 'Route or account occupancy exhausted; inspect uncertain work');
     }
     const sums = scope => this.db.prepare(`SELECT COUNT(*) AS requests,COALESCE(SUM(COALESCE(tokens,reserved)),0) AS tokens FROM requests WHERE created>? ${scope ? 'AND project_id=?' : ''}`).get(...(scope ? [now - 60000, scope] : [now - 60000]));
@@ -77,16 +80,33 @@ export const operations = {
       }
     }
   },
+  validateBudgetDefinitions(scope, budgets) {
+    for (const budget of budgets ?? []) {
+      const definition = { resource: budget.resource, period: budget.period, duration_ms: budget.duration_ms ?? null, timezone: budget.timezone ?? 'UTC' };
+      const previous = decode(this.db.prepare('SELECT data FROM budget_definitions WHERE scope=? AND id=?').get(scope, budget.id));
+      requireValue(!previous || JSON.stringify(previous) === JSON.stringify(definition), 'Budget resource/period identity is immutable; choose a new ID for a new definition');
+    }
+  },
   ensureBudgetDefinitions(scope, budgets) {
+    this.validateBudgetDefinitions(scope, budgets);
     for (const budget of budgets ?? []) {
       const definition = { resource: budget.resource, period: budget.period, duration_ms: budget.duration_ms ?? null, timezone: budget.timezone ?? 'UTC' };
       const previous = decode(this.db.prepare('SELECT data FROM budget_definitions WHERE scope=? AND id=?').get(scope, budget.id));
       requireValue(!previous || JSON.stringify(previous) === JSON.stringify(definition), 'Budget resource/period identity is immutable; choose a new ID for a new definition');
       if (previous) continue;
       this.db.prepare('INSERT INTO budget_definitions VALUES(?,?,?)').run(scope, budget.id, JSON.stringify(definition));
-      const rows = this.db.prepare(`SELECT id,created,reserved,tokens FROM requests ${scope === '*' ? '' : 'WHERE project_id=?'}`).all(...(scope === '*' ? [] : [scope]));
-      for (const row of rows) this.db.prepare('INSERT OR IGNORE INTO budget_bookings VALUES(?,?,?,?,?,?,?,?)').run(row.id, scope, budget.id, budgetKey(budget, row.created), row.created, budget.resource, budget.resource === 'tokens' ? row.reserved : 1, budget.resource === 'tokens' ? row.tokens : 1);
+      const rows = this.db.prepare(`SELECT id,created,reserved,tokens,active,data FROM requests ${scope === '*' ? '' : 'WHERE project_id=?'}`).all(...(scope === '*' ? [] : [scope]));
+      for (const row of rows) this.db.prepare('INSERT OR IGNORE INTO budget_bookings VALUES(?,?,?,?,?,?,?,?)').run(row.id, scope, budget.id, budgetKey(budget, row.created), row.created, budget.resource, budget.resource === 'tokens' ? row.reserved : 1, budget.resource === 'tokens' ? row.tokens : budget.resource === 'observed_attempts' ? (JSON.parse(row.data).dispatched_at ? 1 : row.active ? null : 0) : 1);
     }
+  },
+  budgetStatus(scope, budgets = []) {
+    const now = this.clock();
+    return budgets.map(budget => {
+      const period = budgetKey(budget, now);
+      const totals = this.db.prepare(`SELECT COALESCE(SUM(amount),0) AS settled,COALESCE(SUM(CASE WHEN amount IS NULL THEN reserved ELSE 0 END),0) AS reserved FROM budget_bookings WHERE scope=? AND budget_id=? AND period=? ${budget.period === 'rolling' ? 'AND created>?' : ''}`)
+        .get(...[scope, budget.id, period, ...(budget.period === 'rolling' ? [now - budget.duration_ms] : [])]);
+      return { ...budget, booking_period: period, ...totals, remaining: budget.limit - totals.settled - totals.reserved, observed_at: now };
+    });
   },
   bookBudgets(record, config, reservation) {
     for (const [scope, limits] of [[record.project_id, record.policy], ['*', config]]) for (const budget of limits.budgets ?? []) {
@@ -94,7 +114,7 @@ export const operations = {
     }
   },
   settleBudgets(id, tokens) {
-    this.db.prepare("UPDATE budget_bookings SET amount=CASE WHEN resource='tokens' THEN ? ELSE 1 END WHERE request_id=?").run(tokens, id);
+    this.db.prepare("UPDATE budget_bookings SET amount=CASE WHEN resource='tokens' THEN ? WHEN resource='observed_attempts' THEN ? ELSE 1 END WHERE request_id=?").run(tokens, this.request(id).dispatched_at ? 1 : 0, id);
   },
   observeUsage(id, { source, event_id: eventId, tokens, reason }) {
     requireValue(typeof source === 'string' && /^[\w.-]{1,100}$/.test(source) && typeof eventId === 'string' && eventId.length > 0 && eventId.length <= 200, 'Stable source and event_id required');
@@ -124,7 +144,7 @@ export const operations = {
   metrics() {
     const totals = this.db.prepare('SELECT COUNT(*) AS requests,COALESCE(SUM(tokens),0) AS settled_tokens,COALESCE(SUM(reserved),0) AS reserved_tokens,SUM(active) AS active FROM requests').get();
     const archive = this.db.prepare('SELECT bytes FROM archive_usage WHERE id=1').get().bytes;
-    return { ...totals, archive_bytes: archive, archive_capacity: this.archiveMaxBytes, uncertain_occupancy: this.occupancy().length,
+    return { ...totals, archive_bytes: archive, archive_capacity: this.archiveMaxBytes, uncertain_occupancy: this.db.prepare("SELECT COUNT(*) AS count FROM requests WHERE json_extract(data,'$.occupancy')='uncertain'").get().count,
       unknown_usage: this.db.prepare('SELECT COUNT(*) AS count FROM requests WHERE active=0 AND tokens IS NULL').get().count,
       latency: this.db.prepare("SELECT AVG(json_extract(data,'$.finished_at')-created) AS gateway_lifetime_ms,AVG(json_extract(data,'$.first_byte_at')-json_extract(data,'$.dispatched_at')) AS backend_first_byte_ms,AVG(json_extract(data,'$.capture_ms')) AS capture_ms FROM requests WHERE active=0").get(),
       observed_at: this.clock() };

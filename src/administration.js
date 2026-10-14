@@ -63,6 +63,7 @@ export async function administration({ path, method, body, url, store, config, e
   const resolution = path.match(/^\/admin\/requests\/([\w-]+)\/(release-occupancy|observations)$/);
   if (resolution && method === 'POST') { reply(resolution[2] === 'observations' ? store.observeUsage(resolution[1], body) : store.releaseOccupancy(resolution[1], body.reason)); return true; }
   if (path === '/admin/retention/run' && method === 'POST') { reply(store.expireCaptures()); return true; }
+  if (path === '/admin/service-usage' && method === 'GET') { reply({ metrics: store.metrics(), budgets: store.budgetStatus('*', config.budgets), completeness: 'request_only' }); return true; }
   if (path === '/admin/metrics' && method === 'GET') { reply(store.metrics()); return true; }
   if (path === '/admin/alerts' && method === 'GET') {
     const metrics = store.metrics(); const alerts = [];

@@ -1,0 +1,71 @@
+name: router4u
+services:
+  gateway:
+    build: .
+    image: router4u:local
+    restart: unless-stopped
+    init: true
+    user: "${ROUTER4U_UID:-1000}:${ROUTER4U_GID:-1000}"
+    env_file: "${ROUTER4U_RUNTIME_DIR:-./.runtime}/.env"
+    ports:
+      - "${ROUTER4U_BIND:-127.0.0.1}:${ROUTER4U_PORT:-9470}:9470"
+    volumes:
+      - "${ROUTER4U_RUNTIME_DIR:-./.runtime}:/config:ro"
+      - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/data:/state"
+    networks: [applications, infrastructure]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+    mem_limit: 512m
+    pids_limit: 128
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:9470/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+  backend:
+    build:
+      context: .tools
+      dockerfile: ../deploy/backend.Dockerfile
+    image: router4u-backend:8.0.28
+    restart: unless-stopped
+    init: true
+    user: "${ROUTER4U_UID:-1000}:${ROUTER4U_GID:-1000}"
+    volumes:
+      - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/cliproxyapi.yaml:/config/cliproxyapi.yaml:ro"
+      - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/auth:/auth"
+    networks: [infrastructure]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+    mem_limit: 512m
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+  maintenance:
+    profiles: [tools]
+    image: router4u:local
+    user: "${ROUTER4U_UID:-1000}:${ROUTER4U_GID:-1000}"
+    env_file: "${ROUTER4U_RUNTIME_DIR:-./.runtime}/.env"
+    volumes:
+      - "${ROUTER4U_RUNTIME_DIR:-./.runtime}:/config:ro"
+      - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/data:/state"
+      - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/auth:/auth:ro"
+      - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/backups:/backups"
+      - "${ROUTER4U_RESTORE_DIR:-./.runtime/restores}:/restores"
+    networks: [infrastructure]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+networks:
+  applications: {}
+  infrastructure: {}
