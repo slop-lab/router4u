@@ -1,0 +1,9 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Router4u · Control room</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<section id="login" class="login" hidden><form id="login-form" class="login-card"><div class="mark">r4</div><p class="eyebrow">YOUR MODELS. ONE PLACE.</p><h1>Welcome to Router4u</h1><p>Connect your accounts, give each application its own key, and keep usage under control.</p><label>Operator key<input id="operator-key" type="password" autocomplete="current-password" required></label><button>Open control room →</button><p class="muted">Use the operator key from your installation environment. This browser session expires after eight hours.</p></form></section>
+<div id="shell" hidden><aside><a class="brand" href="#overview"><span class="mark">r4</span> Router4u</a><p class="eyebrow">CONTROL ROOM</p><nav aria-label="Main navigation"><a href="#overview">Overview</a><a href="#connections">Connections</a><a href="#projects">Projects & keys</a><a href="#requests">Requests</a><a href="#settings">Settings</a><a href="#activity">Activity</a></nav><div class="sidebar-bottom"><span class="dot"></span> Personal infrastructure<button id="logout" class="quiet">Sign out</button></div></aside><main><header><div><p class="eyebrow">WORKSPACE / <span id="section-label">OVERVIEW</span></p><h1 id="title">Your control room</h1></div><button id="refresh" class="secondary">Refresh</button></header><div id="content" aria-live="polite"></div></main></div>
+<div id="notice" role="status" hidden></div>
+<dialog id="detail"><div class="dialog-head"><h2 id="detail-title">Details</h2><button id="close-detail" class="secondary">Close</button></div><div id="detail-content"></div></dialog>
+</body></html>

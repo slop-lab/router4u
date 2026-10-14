@@ -56,6 +56,17 @@ try {
   assert.equal(JSON.parse(client('project-a', alpha.key, '/v1/usage').body).settled_tokens, 15);
   const configPath = join(runtime, 'router4u.json'); const config = JSON.parse(readFileSync(configPath, 'utf8')); config.routes[0].concurrency = 2; writeFileSync(configPath, JSON.stringify(config));
   assert.equal(cli('reload', '--dry-run').applied, false); assert.equal(cli('reload').applied, true);
+  const web = JSON.parse(compose(['exec', '-T', 'gateway', 'node', '--input-type=module'], `
+    const base = 'http://127.0.0.1:9470';
+    const home = await fetch(base); if (!(await home.text()).includes('Control room')) throw new Error('Web UI missing from image');
+    const session = await fetch(base + '/web/session', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ key: process.env.ROUTER4U_ADMIN_KEY }) });
+    const headers = { cookie: session.headers.get('set-cookie').split(';')[0], 'x-csrf-token': (await session.json()).csrf, 'content-type': 'application/json' };
+    const snapshot = await (await fetch(base + '/admin/config', { headers })).json();
+    delete snapshot.config.revision; snapshot.config.daily_requests = 12345;
+    const saved = await fetch(base + '/admin/config', { method: 'PUT', headers, body: JSON.stringify({ revision: snapshot.revision, config: snapshot.config }) });
+    console.log(JSON.stringify({ status: saved.status, result: await saved.json() }));
+  `));
+  assert.equal(web.status, 200); assert.equal(web.result.applied, true);
   // Kill the container during a stream and let unless-stopped restart it automatically.
   const holdingBody = { ...body, input: [{ role: 'user', content: 'hold' }] };
   const pending = spawn('docker', [...composeArgs, 'exec', '-T', 'project-a', 'node', '--input-type=module', '-e', `try {const r=await fetch('http://gateway:9470/v1/responses',{method:'POST',headers:{authorization:'Bearer '+${JSON.stringify(alpha.key)},'content-type':'application/json'},body:${JSON.stringify(JSON.stringify(holdingBody))}});await r.text();} catch {}`], { env: environment, stdio: 'ignore' });
@@ -67,6 +78,8 @@ try {
   const gatewayId = compose(['ps', '-q', 'gateway']).trim();
   compose(['exec', '-T', 'gateway', 'node', '-e', "const fs=require('node:fs');process.kill(JSON.parse(fs.readFileSync('/state/service.lock','utf8')).pid,'SIGKILL')"]);
   await discarded; await waitReady();
+  assert.equal(cli('api', '/admin/config').config.daily_requests, 12345);
+  assert.equal(cli('api', '/admin/web-status').configuration_source, 'browser');
   const record = cli('request', pendingId); assert.equal(record.execution, 'outcome_unknown'); assert.equal(record.accounting, 'reconciliation_required'); assert.equal(record.occupancy, 'uncertain');
   assert.equal(cli('usage', 'alpha').settled_tokens, 15);
   const gatewayInspection = JSON.parse(execFileSync('docker', ['inspect', gatewayId], { encoding: 'utf8' }))[0];
@@ -82,6 +95,7 @@ try {
   assert.match(readFileSync(join(runtime, 'restores/check/partitions/extra/auth/inert-extra.json'), 'utf8'), /inert-extra-credential/);
   const { Store } = await import('../src/store.js');
   const restored = new Store(join(runtime, 'restores/check/data'));
+  assert.equal(JSON.parse(restored.db.prepare("SELECT data FROM settings WHERE id='web_configuration'").get().data).daily_requests, 12345);
   assert.equal(restored.request(pendingId).accounting, 'reconciliation_required');
   assert.equal(restored.status('alpha').reserved_tokens, 4096); restored.close();
   console.log('Deployment contracts passed: two projects, network isolation, rebuild, reload, automatic crash restart, durable unknown usage, and full installation backup/restore. No live provider was used.');

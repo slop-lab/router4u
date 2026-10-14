@@ -144,3 +144,14 @@ The resource, period, duration, and timezone of a budget ID are immutable. Limit
 Retention expiry is booked from admission time and applies only after local execution finishes. Expiry, explicit deletion, incomplete recording, and intentional metadata-only capture remain distinct. Account/route occupancy may outlive local execution; token reservations are independent. The capture manifest inventories observable input multimodal items without fetching references; the original body remains authoritative, and inventory completeness is explicit.
 
 `X-Correlation-Ref` and `X-Installation-Id` are optional diagnostic metadata, each limited to 256 bytes. They do not affect authorization or budget ownership. The uncertain-occupancy endpoint returns up to 200 oldest unresolved items; releasing them exposes the next batch. Metrics count all unresolved items.
+
+## Browser administration
+
+`GET /` serves the control room. `POST /web/session` accepts `{ "key": "OPERATOR_KEY" }` and returns an HttpOnly session cookie and CSRF token; `GET /web/session` reports session state; `DELETE /web/session` invalidates it. Cookie-authenticated `/admin/*` calls and logout require `X-CSRF-Token`. Existing operator Bearer authentication is unchanged.
+
+- `GET /admin/web-status`: admission pause state and active configuration source (`file` or `browser`).
+- `GET /admin/principals`: key IDs, project IDs, and enabled flags; never keys or hashes.
+- `PUT /admin/config`: `{ "revision": "CURRENT_REVISION", "config": { ... }, "dry_run": false }`. Validates and saves a durable browser override. A stale revision returns 409; restart-only changes are rejected. Strip the read-only `revision` field from the nested config returned by GET before submitting it.
+- Existing `POST /admin/config/reload` replaces the browser override with the installation file only on a successful non-dry-run apply.
+
+See [web administration](web-ui.md) for session and configuration precedence details.

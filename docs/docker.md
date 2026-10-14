@@ -19,6 +19,10 @@ Both long-running services use `restart: unless-stopped`. Docker automatically r
 
 The wrapper is equivalent to `docker compose --env-file .runtime/compose.env`, adding the generated partition override when present. Commands such as `./router4u cli usage my-app` use `docker compose exec gateway node /app/src/cli.js ...`.
 
+## Open the control room
+
+Open `http://127.0.0.1:9470/` and sign in using `ROUTER4U_ADMIN_KEY` from the private `.runtime/.env` file. The [web UI](web-ui.md) is the primary interface for everyday administration. The CLI procedures below remain available for automation and maintenance.
+
 ## Connect Codex
 
 ```sh
@@ -44,7 +48,7 @@ The backend owns OAuth state, PKCE, token exchange, credential persistence, and 
 
 ## Bind Sign in with ChatGPT
 
-The pinned backend requires an existing Codex credential before SIWC binding. Identify its filename with `accounts`. Pause, drain active work, and stop the relevant backend before binding:
+The pinned backend requires an existing Codex credential before SIWC binding. The stopped-backend procedure below is a Router4u integration precaution, not an inherent OAuth constraint; see [the authentication comparison](authentication-comparison.md). Identify its filename with `accounts`. Pause, drain active work, and stop the relevant backend before binding:
 
 ```sh
 ./router4u cli pause

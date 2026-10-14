@@ -5,11 +5,13 @@ import { periodFor } from './config.js';
 const decode = row => row ? JSON.parse(row.data) : null;
 const budgetKey = (budget, now) => budget.period === 'rolling' ? 'rolling' : periodFor(now, budget.timezone ?? 'UTC').slice(0, budget.period === 'month' ? 7 : 10);
 export const operations = {
-  configuration(config) {
+  configuration(config, { web = false, clearWeb = false } = {}) {
     const current = decode(this.db.prepare("SELECT data FROM settings WHERE id='configuration'").get());
-    if (current && JSON.stringify(current.config) === JSON.stringify(config)) return current;
+    if (!web && !clearWeb && current && JSON.stringify(current.config) === JSON.stringify(config)) return current;
     return this.transaction(() => {
       this.ensureBudgetDefinitions('*', config.budgets);
+      if (web) this.db.prepare("INSERT INTO settings VALUES('web_configuration',?) ON CONFLICT(id) DO UPDATE SET data=excluded.data").run(JSON.stringify(config));
+      if (clearWeb) this.db.prepare("DELETE FROM settings WHERE id='web_configuration'").run();
       for (const account of config.accounts) { const previous = this.account(account.id);
         requireValue(!previous || (previous.route_id === account.route_id && previous.credential_name === account.credential_name), 'Account identity is immutable; create a new account ID');
       }

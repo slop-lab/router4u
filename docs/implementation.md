@@ -36,6 +36,10 @@ SQLite schema v2 adds principal scopes, account registry metadata, configuration
 
 Docker Compose separates application and infrastructure networks. Long-running services use `restart: unless-stopped`; a kernel file lock prevents competing gateway/maintenance containers, while PID/start-time identity protects local CLI use. Only one service process and one refresh owner per credential are supported.
 
-The configuration file remains the route/account authority. Reload versions its validated contents; backend credential mutations are delegated and audited, and later inspection reports drift. Principal keys default to inference and metadata access without payload-export authority. Backend metadata cannot prove SIWC credential mode; the Docker guide provides a token-free local inspection command.
+The installation file supplies initial configuration and restart-only fields. A browser save establishes a durable SQLite override for mutable route/account/service configuration; explicit file reload replaces that override and versions its validated contents; backend credential mutations are delegated and audited, and later inspection reports drift. Principal keys default to inference and metadata access without payload-export authority. Backend metadata cannot prove SIWC credential mode; the Docker guide provides a token-free local inspection command.
 
 Calendar day/month and rolling budgets support local request counts, estimated tokens, and conservatively reserved observable dispatches. Internal backend attempts remain excluded from exactness claims. Request-boundary usage corrections have stable source/event identity, durable replay-safe insertion, audited ledger deltas, and outbox events.
+
+## Web administration
+
+The gateway serves a dependency-free browser UI and exchanges the operator key for a bounded, expiring HttpOnly session. Cookie-authenticated admin calls require same-origin validation and a CSRF header. Existing bearer authentication remains available to CLI automation. Browser settings use the same validators and a revision precondition, with configuration revisions and the saved override committed in one SQLite transaction. Read-only Docker configuration mounts remain supported. See [the web guide](web-ui.md).

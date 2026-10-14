@@ -14,11 +14,13 @@
     "demo": "node scripts/demo.js",
     "backend:install": "node scripts/install-backend.js",
     "test:deployment": "node scripts/test-deployment.js",
-    "benchmark": "node scripts/benchmark.js"
+    "benchmark": "node scripts/benchmark.js",
+    "test:browser": "sh scripts/test-browser.sh"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.93",
     "@earendil-works/pi-ai": "1.2.0",
-    "ai": "7.0.140"
+    "ai": "7.0.140",
+    "playwright": "1.56.1"
   }
 }

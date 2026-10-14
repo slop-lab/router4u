@@ -1,3 +1,4 @@
+import { webSessions } from './web-session.js';
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { Store, digest } from './store.js';
@@ -47,6 +48,11 @@ export function createGateway(input, options = {}) {
   const adminKey = environment[config.admin_key_env];
   requireValue(typeof adminKey === 'string' && adminKey.length >= 24, 'Set an operator key of at least 24 characters');
   const store = options.store ?? new Store(config.data_dir, { archiveMaxBytes: config.archive_max_bytes });
+  const restartFields = ['host', 'port', 'data_dir', 'admin_key_env', 'maintenance_interval_ms'];
+  const saved = store.db.prepare("SELECT data FROM settings WHERE id='web_configuration'").get();
+  if (saved) config = validateConfig({ ...JSON.parse(saved.data), ...Object.fromEntries(restartFields.map(key => [key, config[key]])) });
+  store.archiveMaxBytes = config.archive_max_bytes;
+  const web = webSessions(adminKey, { json, readBody, parse });
   store.recover();
   config.revision = store.configuration(config).revision;
   let maintenanceError = null;
@@ -55,10 +61,10 @@ export function createGateway(input, options = {}) {
     catch { maintenanceError = 'retention_failed'; process.stderr.write('Retention maintenance failed; inspect storage\n'); }
   }, config.maintenance_interval_ms);
   maintenance.unref();
-  function reload(dryRun = false) {
-    requireValue(typeof options.loadConfig === 'function', 'Configuration reload is unavailable for this embedding');
-    const next = validateConfig(options.loadConfig());
-    for (const key of ['host', 'port', 'data_dir', 'admin_key_env', 'maintenance_interval_ms']) requireValue(next[key] === config[key], `${key} requires a process restart`);
+  function reload(dryRun = false, candidate) {
+    if (!candidate) requireValue(typeof options.loadConfig === 'function', 'Configuration reload is unavailable for this embedding');
+    const next = validateConfig(candidate ?? options.loadConfig());
+    for (const key of restartFields) requireValue(next[key] === config[key], `${key} requires a process restart`);
     for (const project of store.projects()) requireValue(project.policy.routes.every(id => next.routes.some(route => route.id === id)), 'A project still references a removed route');
     for (const account of store.accounts()) {
       const replacement = next.accounts.find(item => item.id === account.id);
@@ -66,7 +72,7 @@ export function createGateway(input, options = {}) {
     }
     store.validateBudgetDefinitions('*', next.budgets);
     if (dryRun) return { valid: true, applied: false, routes: next.routes.map(capabilities) };
-    next.revision = store.configuration(next).revision;
+    next.revision = store.configuration(next, { web: !!candidate, clearWeb: !candidate }).revision;
     config = next; store.archiveMaxBytes = next.archive_max_bytes;
     return { valid: true, applied: true, revision: next.revision };
   }
@@ -88,6 +94,7 @@ export function createGateway(input, options = {}) {
     return route;
   };
   const requireAdmin = request => {
+    if (!request.headers.authorization) return web.authorize(request);
     const supplied = request.headers.authorization?.replace(/^Bearer /, '') ?? '';
     if (!timingSafeEqual(Buffer.from(digest(supplied)), Buffer.from(digest(adminKey)))) throw new ServiceError(401, 'authentication_failed', 'Operator credential required');
   };
@@ -202,6 +209,7 @@ export function createGateway(input, options = {}) {
       const url = new URL(request.url, 'http://router4u.local');
       const path = url.pathname;
       const method = request.method;
+      if (await web.handle(request, response, path)) return;
       if (path === '/healthz' && method === 'GET') return json(response, 200, { status: 'alive' });
       if (path === '/readyz' && method === 'GET') {
         store.db.prepare('SELECT 1').get();
@@ -210,6 +218,13 @@ export function createGateway(input, options = {}) {
       if (path.startsWith('/admin/')) {
         requireAdmin(request);
         const body = ['POST', 'PUT', 'PATCH'].includes(method) ? parse(await readBody(request, config.max_request_bytes)) : {};
+        if (path === '/admin/config' && method === 'PUT') {
+          requireValue(body.config && typeof body.config === 'object' && !Array.isArray(body.config), 'config must be an object');
+          if (body.revision !== config.revision) throw new ServiceError(409, 'configuration_conflict', 'Configuration changed; reload the editor before saving');
+          return json(response, 200, reload(body.dry_run === true, body.config));
+        }
+        if (path === '/admin/web-status' && method === 'GET') return json(response, 200, { paused: store.paused(), configuration_source: store.db.prepare("SELECT id FROM settings WHERE id='web_configuration'").get() ? 'browser' : 'file' });
+        if (path === '/admin/principals' && method === 'GET') return json(response, 200, store.db.prepare('SELECT id,project_id,enabled FROM principals ORDER BY project_id,id').all());
         if (await administration({ path, method, body, url, store, config, environment, routeFor, reload, active, reply: value => json(response, 200, value) })) return;
         if (path === '/admin/projects' && method === 'GET') return json(response, 200, store.projects());
         const projectPath = path.match(/^\/admin\/projects\/([\w-]+)(\/keys)?$/);

@@ -15,8 +15,9 @@ Use ChatGPT/Codex account connections only for yourself and your own application
 ```sh
 sh scripts/setup-docker.sh YOUR_ACCOUNT_MODEL codex
 ./router4u up -d --build
-./router4u cli auth codex
 ```
+
+Open **http://127.0.0.1:9470/** and sign in with the operator key from `.runtime/.env`. Use the [web control room](docs/web-ui.md) to connect Codex, configure routes, create projects and keys, inspect requests, and manage settings.
 
 Follow [Docker installation and account operations](docs/docker.md) for callback submission, ChatGPT binding, project keys, extra accounts, configuration reload, and complete backups. Both long-running services use `restart: unless-stopped`; state and credentials persist outside containers. Additional isolated accounts can be prepared with `sh scripts/add-partition.sh work YOUR_ACCOUNT_MODEL codex`.
 
@@ -30,7 +31,9 @@ Requires Node.js **24.19.0 or newer in the 24.x series**. Runtime code has no np
 npm run demo
 ```
 
-In another terminal, from this directory:
+Open **http://127.0.0.1:9470/** and use `ROUTER4U_ADMIN_KEY` from `.runtime/demo.env` to try the UI without any provider connection.
+
+To exercise inference from another terminal:
 
 ```sh
 set -a
