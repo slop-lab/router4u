@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { PRINCIPAL_SCOPES } from '../src/config.js';
 import { createGateway } from '../src/server.js';
 
 export const adminKey = 'test-only-operator-key-at-least-24-characters';
@@ -67,8 +68,8 @@ export async function fixture(context, { handler, policy = {}, profile = 'api_ke
   const gateway = createGateway(config, { environment: { ROUTER4U_ADMIN_KEY: adminKey, TEST_BACKEND_KEY: backendKey } });
   gateway.store.putProject('alpha', { routes: ['local'], ...policy });
   gateway.store.putProject('beta', { routes: ['local'] });
-  const alpha = gateway.store.issueKey('alpha');
-  const beta = gateway.store.issueKey('beta');
+  const alpha = gateway.store.issueKey('alpha', PRINCIPAL_SCOPES);
+  const beta = gateway.store.issueKey('beta', PRINCIPAL_SCOPES);
   const url = await gateway.listen();
   context.after(async () => { await backend.close(); await gateway.close(); rmSync(directory, { recursive: true, force: true }); });
   return { gateway, backend, url, directory, alpha, beta,

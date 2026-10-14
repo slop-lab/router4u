@@ -1,0 +1,18 @@
+# Remaining architecture implementation
+
+The private architecture is the requirements baseline. This increment completes the single-host operational path without moving OAuth, refresh, protocol translation, application tools, or conversation ownership into Router4u.
+
+## Implementation groups
+
+1. Durable account/configuration revisions, validated reload, principal scopes, historical exports, retention, additional budget dimensions, auditable corrections, and uncertain execution occupancy.
+2. Pinned backend lifecycle operations and passive quota observations, effective-policy/capability inspection, metrics and actionable alerts.
+3. Docker Compose with `restart: unless-stopped`, private backend networking, persistent state/authentication, restart-safe locking, and CLI-driven administration.
+4. Complete installation backup/restore, schema migration protections, automated container lifecycle verification, and representative streaming/cancellation overhead measurements.
+
+## Deliberate capability boundaries
+
+The pinned backend exposes request-level observations. Internal attempts and translated upstream captures remain unavailable; the service must not advertise exact accounting for them. Strict token ceilings remain rejected. Stateful continuation, additional transports, queues, multiple replicas, cost estimation, and application orchestration are not enabled. These are explicit architecture-permitted exclusions, not placeholder implementations.
+
+Credential mode and live account eligibility require operator verification because the management metadata does not expose the SIWC binding flag. OAuth callbacks and refresh remain backend-owned. Provider behavior cannot be proven using inert credentials.
+
+All operational additions require offline behavioral tests. Backend mutations require the pinned executable contract suite. Deployment tests use network-isolated fake upstreams and must not consume a real account's quota.

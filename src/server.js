@@ -1,7 +1,8 @@
 import { createServer } from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { Store, digest } from './store.js';
-import { validateConfig } from './config.js';
+import { administration, effectivePolicy, historyQuery, requireScope } from './administration.js';
+import { validateConfig, capabilities } from './config.js';
 import { ServiceError, requireValue, errorBody } from './errors.js';
 import { validatePayload, ResponseObserver } from './protocol.js';
 import { backendHeaders, dispatch, BackendManagement } from './backend.js';
@@ -41,12 +42,33 @@ function writeChunk(response, chunk, signal) {
 }
 
 export function createGateway(input, options = {}) {
-  const config = validateConfig(input);
+  let config = validateConfig(input);
   const environment = options.environment ?? process.env;
   const adminKey = environment[config.admin_key_env];
   requireValue(typeof adminKey === 'string' && adminKey.length >= 24, 'Set an operator key of at least 24 characters');
   const store = options.store ?? new Store(config.data_dir, { archiveMaxBytes: config.archive_max_bytes });
   store.recover();
+  config.revision = store.configuration(config).revision;
+  let maintenanceError = null;
+  const maintenance = setInterval(() => {
+    try { store.expireCaptures(); maintenanceError = null; }
+    catch { maintenanceError = 'retention_failed'; process.stderr.write('Retention maintenance failed; inspect storage\n'); }
+  }, config.maintenance_interval_ms);
+  maintenance.unref();
+  function reload(dryRun = false) {
+    requireValue(typeof options.loadConfig === 'function', 'Configuration reload is unavailable for this embedding');
+    const next = validateConfig(options.loadConfig());
+    for (const key of ['host', 'port', 'data_dir', 'admin_key_env', 'maintenance_interval_ms']) requireValue(next[key] === config[key], `${key} requires a process restart`);
+    for (const project of store.projects()) requireValue(project.policy.routes.every(id => next.routes.some(route => route.id === id)), 'A project still references a removed route');
+    for (const account of store.accounts()) {
+      const replacement = next.accounts.find(item => item.id === account.id);
+      if (replacement) requireValue(replacement.route_id === account.route_id && replacement.credential_name === account.credential_name, 'Account identity is immutable; add a new account ID for a new binding');
+    }
+    if (dryRun) return { valid: true, applied: false, routes: next.routes.map(capabilities) };
+    next.revision = store.configuration(next).revision;
+    config = next; store.archiveMaxBytes = next.archive_max_bytes;
+    return { valid: true, applied: true, revision: next.revision };
+  }
   const active = new Map();
   let exportsInFlight = 0;
   const exportCapture = (response, id, actor) => {
@@ -75,13 +97,16 @@ export function createGateway(input, options = {}) {
   };
   function capture(id, direction, bytes) {
     const record = store.request(id);
+    const started = performance.now();
     try { store.append(id, direction, bytes); }
     catch (error) {
       store.captureState(id, 'partial');
       if (record.policy.recording === 'required') throw error instanceof ServiceError ? error : new ServiceError(507, 'recording_failed', 'Required archive write failed');
-    }
+    } finally { store.update(id, { capture_ms: (store.request(id).capture_ms ?? 0) + performance.now() - started }); }
   }
   async function inference(request, response, principal, url, protocol) {
+    requireScope(principal, 'inference');
+    const inferenceConfig = config;
     const project = store.project(principal.project_id);
     if (request.headers['x-project-id'] && request.headers['x-project-id'] !== project.id) throw new ServiceError(403, 'project_forbidden', 'Credential does not authorize that project');
     const routeId = request.headers['x-router4u-route'] ?? (project.policy.routes.length === 1 ? project.policy.routes[0] : null);
@@ -95,6 +120,7 @@ export function createGateway(input, options = {}) {
     validatePayload(payload, route, protocol);
     backendHeaders(route, environment);
     if (route.account_id) await new BackendManagement(route, environment).verifyExclusiveAccount();
+    if (config !== inferenceConfig) throw new ServiceError(503, 'configuration_changed', 'Configuration changed during account verification; retry admission');
     const record = store.admit(principal, route, protocol, config);
     const id = record.id;
     response.setHeader('x-router4u-request-id', id);
@@ -109,6 +135,7 @@ export function createGateway(input, options = {}) {
     const disconnect = () => { if (!finished) controller.abort('client_disconnected'); };
     response.on('close', disconnect);
     try {
+      store.captureState(id, store.manifest(id).state, { content_items: contentItems(payload) });
       capture(id, 'request', raw);
       if (controller.signal.aborted) throw new ServiceError(499, 'cancelled', 'Request cancelled before dispatch');
       store.dispatch(id, payload.model);
@@ -124,7 +151,9 @@ export function createGateway(input, options = {}) {
         ...(upstream.headers.get('retry-after') ? { 'retry-after': upstream.headers.get('retry-after') } : {}),
         ...(!upstream.ok ? { 'x-router4u-error-category': upstream.status === 429 ? 'upstream_rate_limited' : 'upstream_error' } : {}) });
       if (streaming) store.update(id, { execution: 'streaming' });
+      let firstByte = true;
       for await (const chunk of upstream.body) {
+        if (firstByte) { store.update(id, { first_byte_at: Date.now() }); firstByte = false; }
         observer.push(chunk);
         capture(id, 'response', chunk);
         await writeChunk(response, chunk, controller.signal);
@@ -170,11 +199,12 @@ export function createGateway(input, options = {}) {
       if (path === '/healthz' && method === 'GET') return json(response, 200, { status: 'alive' });
       if (path === '/readyz' && method === 'GET') {
         store.db.prepare('SELECT 1').get();
-        return json(response, store.paused() ? 503 : 200, { local_ready: !store.paused(), provider_reachability: 'not_probed' });
+        return json(response, store.paused() ? 503 : 200, { local_ready: !store.paused(), maintenance_error: maintenanceError, provider_reachability: 'not_probed' });
       }
       if (path.startsWith('/admin/')) {
         requireAdmin(request);
         const body = ['POST', 'PUT', 'PATCH'].includes(method) ? parse(await readBody(request, config.max_request_bytes)) : {};
+        if (await administration({ path, method, body, url, store, config, environment, routeFor, reload, active, reply: value => json(response, 200, value) })) return;
         if (path === '/admin/projects' && method === 'GET') return json(response, 200, store.projects());
         const projectPath = path.match(/^\/admin\/projects\/([\w-]+)(\/keys)?$/);
         if (projectPath && method === 'PUT' && !projectPath[2]) {
@@ -182,7 +212,7 @@ export function createGateway(input, options = {}) {
           body.routes.forEach(routeFor);
           return json(response, 200, store.putProject(projectPath[1], body));
         }
-        if (projectPath && method === 'POST' && projectPath[2]) return json(response, 201, store.issueKey(projectPath[1]));
+        if (projectPath && method === 'POST' && projectPath[2]) return json(response, 201, store.issueKey(projectPath[1], body.scopes));
         const keyPath = path.match(/^\/admin\/principals\/([\w-]+)$/);
         if (keyPath && method === 'DELETE') { store.revokeKey(keyPath[1]); return json(response, 200, { revoked: true }); }
         if (path === '/admin/pause' && method === 'POST') { store.pause(body.paused); return json(response, 200, { paused: store.paused() }); }
@@ -198,7 +228,7 @@ export function createGateway(input, options = {}) {
           const id = recordPath[1];
           authorizedRequest(id);
           if (method === 'POST' && recordPath[2] === 'resolve') return json(response, 200, store.resolve(id, body.tokens, body.reason));
-          if (method === 'DELETE' && recordPath[2] === 'exchange') return json(response, 200, store.deleteCapture(id, body.expired === true));
+          if (method === 'DELETE' && recordPath[2] === 'exchange') return json(response, 200, store.deleteCapture(id, url.searchParams.get('expired') === 'true'));
           if (method === 'GET' && recordPath[2] === 'exchange') return exportCapture(response, id, 'operator');
           if (method === 'GET' && !recordPath[2]) return json(response, 200, store.request(id));
           if (method === 'POST' && recordPath[2] === 'cancel') return cancel(id, response, 'operator');
@@ -215,6 +245,10 @@ export function createGateway(input, options = {}) {
       } else {
         const principal = store.authenticate(request.headers.authorization?.replace(/^Bearer /, ''));
         if (method === 'POST' && ['/v1/responses', '/v1/chat/completions'].includes(path)) return await inference(request, response, principal, url, path.endsWith('/responses') ? 'responses' : 'chat');
+        if (method === 'GET') requireScope(principal, path.endsWith('/exchange') ? 'exchange:export' : path.includes('/requests') || path === '/v1/history' ? 'requests:read' : 'usage:read');
+        if (path === '/v1/history' && method === 'GET') return json(response, 200, store.history(principal.project_id, historyQuery(url)));
+        if (path === '/v1/usage-history' && method === 'GET') { const query = historyQuery(url); return json(response, 200, store.usageHistory(principal.project_id, query.from, query.to)); }
+        if (path === '/v1/effective-policy' && method === 'GET') return json(response, 200, effectivePolicy(store, config, principal.project_id));
         if (path === '/v1/models' && method === 'GET') {
           const project = store.project(principal.project_id);
           const models = [...new Set(config.routes.filter(route => project.policy.routes.includes(route.id)).flatMap(route => route.models))];
@@ -222,10 +256,7 @@ export function createGateway(input, options = {}) {
         }
         if (path === '/v1/capabilities' && method === 'GET') {
           const project = store.project(principal.project_id);
-          return json(response, 200, { routes: config.routes.filter(route => project.policy.routes.includes(route.id)).map(route => ({ id: route.id,
-            profile: route.profile, models: route.models, protocols: route.protocols, streaming: true,
-            cancellation: 'best_effort', token_enforcement: ['observe', 'estimate'], continuation: false,
-            attempt_visibility: 'request_only', capture_boundary: 'client_application_body' })) });
+          return json(response, 200, { routes: config.routes.filter(route => project.policy.routes.includes(route.id)).map(capabilities) });
         }
         if (path === '/v1/usage' && method === 'GET') return json(response, 200, store.status(principal.project_id));
         if (path === '/v1/requests' && method === 'GET') return json(response, 200, store.requests(principal.project_id));
@@ -235,7 +266,7 @@ export function createGateway(input, options = {}) {
           authorizedRequest(id, principal);
           if (method === 'GET' && !recordPath[2]) return json(response, 200, store.request(id));
           if (method === 'GET' && recordPath[2] === 'exchange') return exportCapture(response, id, principal.id);
-          if (method === 'POST' && recordPath[2] === 'cancel') return cancel(id, response, principal.id);
+          if (method === 'POST' && recordPath[2] === 'cancel') { requireScope(principal, 'requests:cancel'); return cancel(id, response, principal.id); }
         }
       }
       throw new ServiceError(404, 'not_found', 'Endpoint not found');
@@ -257,12 +288,28 @@ export function createGateway(input, options = {}) {
   server.headersTimeout = 15000;
   server.maxConnections = 256;
   server.on('upgrade', (request, socket) => socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n'));
-  return { server, store, config, active, async listen() {
+  return { server, store, get config() { return config; }, reload, active, async listen() {
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(config.port, config.host, resolve); });
     return `http://${config.host.includes(':') ? `[${config.host}]` : config.host}:${server.address().port}`;
   }, async close() {
+    clearInterval(maintenance);
     for (const controller of active.values()) controller.abort('service_shutdown');
     await new Promise(resolve => server.close(resolve));
     store.close();
   } };
+}
+
+function contentItems(payload) {
+  const items = []; const pending = [{ value: payload, path: '$' }];
+  while (pending.length && items.length < 1000) {
+    const { value, path } = pending.pop();
+    if (!value || typeof value !== 'object') continue;
+    if (value.type && /image|audio|video|file/.test(value.type)) {
+      const inline = value.image_url ?? value.url ?? value.file_data ?? value.data ?? value.input_audio?.data;
+      const bytes = typeof inline === 'string' ? inline.startsWith('data:') || !!value.file_data || !!value.data || !!value.input_audio?.data : false;
+      items.push({ path, type: value.type, content: bytes ? 'inline_in_original_body' : 'reference_only_or_unavailable' });
+    }
+    for (const [key, child] of Object.entries(value)) if (child && typeof child === 'object') pending.push({ value: child, path: `${path}.${key}` });
+  }
+  return { items, inventory_complete: pending.length === 0, remote_fetch: false };
 }

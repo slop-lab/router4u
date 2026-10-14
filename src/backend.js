@@ -33,7 +33,8 @@ export class BackendManagement {
   async credentials() {
     const result = await this.call('/credentials');
     return (result.files ?? []).map(file => ({ name: file.name, id: file.id, provider: file.provider,
-      disabled: file.disabled, status: file.status, unavailable: file.unavailable }));
+      disabled: file.disabled, status: file.status, unavailable: file.unavailable,
+      quota: passiveQuota(file.quota), credential_mode: 'not_exposed_by_management' }));
   }
   async inspect() {
     const config = await this.call('/config');
@@ -57,6 +58,15 @@ export class BackendManagement {
     }
     return status;
   }
+  async credentialAction(name, action) {
+    requireValue(typeof name === 'string' && /^[a-zA-Z0-9_.@+-]+\.json$/.test(name) && !name.includes('..'), 'Invalid credential filename');
+    requireValue(['enable', 'disable', 'remove', 'refresh'].includes(action), 'Invalid credential operation');
+    if (action === 'enable' || action === 'disable') await this.call('/credentials/status', 'PATCH', { name, disabled: action === 'disable' });
+    if (action === 'remove') await this.call(`/credentials?name=${encodeURIComponent(name)}`, 'DELETE');
+    if (action === 'refresh') await this.call('/credentials/refresh', 'POST', { name });
+    // Refresh responses can contain full credential objects. Never return them.
+    return { name, action, completed: true, lifecycle_owner: 'CLIProxyAPI' };
+  }
   login() { return this.call('/oauth/auth-url?provider=codex'); }
   status(state) { requireValue(typeof state === 'string' && state.length <= 256, 'Invalid OAuth state'); return this.call(`/oauth/status?state=${encodeURIComponent(state)}`); }
   callback(redirectURL) {
@@ -71,4 +81,12 @@ export class BackendManagement {
     const result = await response.json();
     return result.data ?? result.models ?? [];
   }
+}
+
+function passiveQuota(raw) {
+  const signals = Object.fromEntries(Object.entries(raw?.signals ?? {}).filter(([key, value]) =>
+    /^(retry-after|anthropic-ratelimit-unified-[a-z0-9-]+|x-ratelimit-[a-z0-9-]+|x-codex-(active-limit|plan-type|credits-[a-z0-9-]+|[a-z0-9-]+-(allowed|limit-reached|limit-name|used-percent|window-minutes|reset-after-seconds|reset-at|over-secondary-limit-percent)))$/i.test(key)
+    && typeof value === 'string' && value.length <= 512 && !/[\x00-\x1f\x7f]/.test(value)).slice(0, 64));
+  const observed = typeof raw?.observed_at === 'string' && Number.isFinite(Date.parse(raw.observed_at)) ? raw.observed_at : null;
+  return { status: observed ? 'observed' : 'unavailable', source: 'CLIProxyAPI_passive_provider_headers', observed_at: observed, collected_at: Date.now(), signals, exact_remaining_capacity: 'not_inferred' };
 }

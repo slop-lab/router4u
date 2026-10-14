@@ -110,3 +110,19 @@ test('Pinned v8 management supports Codex PKCE initiation without live sign-in',
   await setup.management.call(`/oauth/session?state=${encodeURIComponent(login.state)}`, 'DELETE');
   assert.equal((await setup.management.models()).some(model => model.id === 'test-model'), true);
 });
+
+test('Pinned credential lifecycle updates exactly one inert account and removes it', async context => {
+  const setup = await backendFixture(context);
+  await setup.management.call('/credentials?name=inert-lifecycle.json', 'POST', { type: 'codex', disabled: true,
+    access_token: 'inert-never-authorized', expired: '2099-01-01T00:00:00Z', email: 'inert@example.invalid' });
+  assert.equal((await setup.management.credentials()).find(item => item.name === 'inert-lifecycle.json').disabled, true);
+  await setup.management.credentialAction('inert-lifecycle.json', 'enable');
+  assert.equal((await setup.management.credentials()).find(item => item.name === 'inert-lifecycle.json').disabled, false);
+  await setup.management.credentialAction('inert-lifecycle.json', 'disable');
+  const credential = (await setup.management.credentials()).find(item => item.name === 'inert-lifecycle.json');
+  assert.equal(credential.disabled, true); assert.equal(credential.quota.status, 'unavailable');
+  assert.doesNotMatch(JSON.stringify(credential), /inert-never-authorized/);
+  await setup.management.credentialAction('inert-lifecycle.json', 'remove');
+  assert.equal((await setup.management.credentials()).length, 0);
+  await assert.rejects(setup.management.credentialAction('missing.json', 'refresh'), /HTTP 404/);
+});

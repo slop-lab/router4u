@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createGateway } from '../src/server.js';
 import { fakeProvider } from '../test/helpers.js';
+import { PRINCIPAL_SCOPES } from '../src/config.js';
 import { lockDirectory } from '../src/lock.js';
 
 const directory = resolve('.runtime/demo');
@@ -15,8 +16,8 @@ const gateway = createGateway({ data_dir: directory, routes: [{ id: 'demo', prof
   environment: { ROUTER4U_ADMIN_KEY: adminKey, DEMO_BACKEND_KEY: 'inert-demo-key' },
 });
 for (const project of ['alpha', 'beta']) if (!gateway.store.project(project)) gateway.store.putProject(project, { routes: ['demo'] });
-const alpha = gateway.store.issueKey('alpha');
-const beta = gateway.store.issueKey('beta');
+const alpha = gateway.store.issueKey('alpha', PRINCIPAL_SCOPES);
+const beta = gateway.store.issueKey('beta', PRINCIPAL_SCOPES);
 writeFileSync('.runtime/demo.env', `ROUTER4U_ADMIN_KEY=${adminKey}\nALPHA_KEY=${alpha.key}\nBETA_KEY=${beta.key}\n`, { mode: 0o600 });
 console.log(`Offline demo listening at ${await gateway.listen()}`);
 console.log('Keys are in .runtime/demo.env. No external provider is contacted. See README.md for requests.');

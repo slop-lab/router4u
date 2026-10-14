@@ -3,7 +3,8 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { ServiceError, requireValue } from './errors.js';
-import { validatePolicy, periodFor } from './config.js';
+import { operations } from './store-operations.js';
+import { validatePolicy, periodFor, validateScopes, DEFAULT_SCOPES } from './config.js';
 
 export const digest = value => createHash('sha256').update(value).digest('hex');
 const decode = row => row ? JSON.parse(row.data) : null;
@@ -13,11 +14,11 @@ export class Store {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     this.path = join(directory, 'router4u.sqlite');
     this.db = new DatabaseSync(this.path);
-    if (this.db.prepare('PRAGMA user_version').get().user_version > 1) { this.db.close(); throw new Error('Database schema is newer than this service'); }
+    if (this.db.prepare('PRAGMA user_version').get().user_version > 2) { this.db.close(); throw new Error('Database schema is newer than this service'); }
     chmodSync(this.path, 0o600);
     this.clock = clock;
     this.archiveMaxBytes = archiveMaxBytes;
-    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
+    this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000; BEGIN IMMEDIATE;
       CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS principals(id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id), hash TEXT UNIQUE NOT NULL, enabled INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS policies(revision TEXT PRIMARY KEY, project_id TEXT NOT NULL, data TEXT NOT NULL);
@@ -33,7 +34,14 @@ export class Store {
       CREATE TABLE IF NOT EXISTS audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL, actor TEXT NOT NULL, operation TEXT NOT NULL, target TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS outbox(sequence INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL, request_id TEXT NOT NULL, event TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS settings(id TEXT PRIMARY KEY, data TEXT NOT NULL);
-      PRAGMA user_version=1;`);
+      CREATE TABLE IF NOT EXISTS principal_scopes(principal_id TEXT PRIMARY KEY REFERENCES principals(id), data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS configuration_revisions(revision TEXT PRIMARY KEY, created INTEGER NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS accounts(id TEXT PRIMARY KEY, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS usage_observations(source TEXT NOT NULL,event_id TEXT NOT NULL,request_id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(source,event_id));
+      CREATE TABLE IF NOT EXISTS budget_definitions(scope TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(scope,id));
+      CREATE TABLE IF NOT EXISTS budget_bookings(request_id TEXT NOT NULL,scope TEXT NOT NULL,budget_id TEXT NOT NULL,period TEXT NOT NULL,created INTEGER NOT NULL,resource TEXT NOT NULL,reserved INTEGER NOT NULL,amount INTEGER,PRIMARY KEY(request_id,scope,budget_id));
+      CREATE INDEX IF NOT EXISTS budgets_scope ON budget_bookings(scope,budget_id,period,created);
+      PRAGMA user_version=2; COMMIT;`);
   }
 
   close() { this.db.close(); }
@@ -51,6 +59,7 @@ export class Store {
     requireValue(/^[a-zA-Z0-9_-]{1,64}$/.test(id), 'Invalid project ID');
     const policy = validatePolicy(input);
     return this.transaction(() => {
+      this.ensureBudgetDefinitions(id, policy.budgets);
       const revision = randomUUID();
       const project = { id, policy, revision };
       this.db.prepare('INSERT INTO policies VALUES(?,?,?)').run(revision, id, JSON.stringify(policy));
@@ -59,15 +68,17 @@ export class Store {
       return project;
     });
   }
-  issueKey(projectId) {
+  issueKey(projectId, scopes = DEFAULT_SCOPES) {
+    validateScopes(scopes);
     requireValue(this.project(projectId), 'Unknown project');
     const key = `r4u_${randomBytes(32).toString('base64url')}`;
     const id = randomUUID();
     this.transaction(() => {
       this.db.prepare('INSERT INTO principals VALUES(?,?,?,1)').run(id, projectId, digest(key));
-      this.audit('operator', 'principal.issue', id, { project_id: projectId });
+      this.db.prepare('INSERT INTO principal_scopes VALUES(?,?)').run(id, JSON.stringify(scopes));
+      this.audit('operator', 'principal.issue', id, { project_id: projectId, scopes });
     });
-    return { principal_id: id, project_id: projectId, key };
+    return { principal_id: id, project_id: projectId, key, scopes };
   }
   revokeKey(id) {
     this.transaction(() => {
@@ -80,6 +91,7 @@ export class Store {
     if (!key) throw new ServiceError(401, 'authentication_failed', 'Project credential required');
     const principal = this.db.prepare('SELECT id,project_id FROM principals WHERE hash=? AND enabled=1').get(digest(key));
     if (!principal) throw new ServiceError(401, 'authentication_failed', 'Invalid project credential');
+    principal.scopes = decode(this.db.prepare('SELECT data FROM principal_scopes WHERE principal_id=?').get(principal.id)) ?? DEFAULT_SCOPES;
     return principal;
   }
   paused() { return decode(this.db.prepare("SELECT data FROM settings WHERE id='paused'").get()) ?? false; }
@@ -115,6 +127,7 @@ export class Store {
       const period = periodFor(now, policy.timezone);
       const servicePeriod = periodFor(now);
       const reservation = policy.token_estimate;
+      this.checkAdditionalLimits(project, route, config, reservation, now);
       const projectTotals = this.totals(project.id, period);
       const serviceTotals = this.totals(null, servicePeriod, true);
       const active = this.db.prepare('SELECT COUNT(*) AS count FROM requests WHERE active=1').get().count;
@@ -128,15 +141,16 @@ export class Store {
       }
       const id = randomUUID();
       const record = { id, principal_id: principal.id, project_id: project.id, period, service_period: servicePeriod,
-        policy_revision: project.revision, policy, route: { id: route.id, profile: route.profile, account_id: route.account_id ?? null,
+        policy_revision: project.revision, policy, configuration_revision: config.revision ?? null, route: { id: route.id, profile: route.profile, account_id: route.account_id ?? null,
           account_attribution: route.account_id ? 'verified_exclusive_partition' : 'unknown', base_url: route.base_url },
-        protocol, created: now, admission: 'admitted', execution: 'pending', delivery: 'not_started', accounting: 'reserved',
+        occupancy: 'local', capture_ms: 0, protocol, created: now, admission: 'admitted', execution: 'pending', delivery: 'not_started', accounting: 'reserved',
         capture: policy.recording === 'metadata' ? 'disabled_by_policy' : 'pending', attempt_id: randomUUID(),
         attempt_visibility: 'request_only', usage: null, error: null, cancellation_requested: false };
       this.db.prepare('INSERT INTO requests VALUES(?,?,?,?,?,1,?,NULL,?)').run(id, project.id, period, servicePeriod, now, reservation, JSON.stringify(record));
       this.db.prepare('INSERT INTO captures VALUES(?,?)').run(id, JSON.stringify({ request_id: id, boundary: 'client_application_body',
         excluded: ['authentication_headers', 'upstream_translation', 'remote_referenced_bytes', 'network_packets'],
-        recording: policy.recording, state: record.capture, bytes: 0, chunks: 0, response_status: null, content_type: null }));
+        expires_at: policy.retention_days ? now + policy.retention_days * 86400000 : null, recording: policy.recording, state: record.capture, bytes: 0, chunks: 0, response_status: null, content_type: null }));
+      this.bookBudgets(record, config, reservation);
       this.ledger(`${id}:reserve`, record, 'reservation', reservation);
       return record;
     });
@@ -167,9 +181,12 @@ export class Store {
       const current = this.request(id);
       if (current.finished_at) return current;
       const tokens = observation?.total ?? null;
-      const record = this.update(id, { ...patch, usage: observation ?? null, finished_at: this.clock(),
+      const record = this.update(id, { ...patch, usage: observation ? { ...observation, scope: 'request', observed_at: this.clock() } : null, finished_at: this.clock(),
+        occupancy: patch.execution === 'outcome_unknown' ? 'uncertain' : 'released',
         accounting: tokens === null ? 'reconciliation_required' : 'settled' });
       this.db.prepare('UPDATE requests SET active=0,tokens=?,reserved=CASE WHEN ? IS NULL THEN reserved ELSE 0 END WHERE id=?').run(tokens, tokens, id);
+      this.settleBudgets(id, tokens);
+      if (observation) this.db.prepare('INSERT OR IGNORE INTO usage_observations VALUES(?,?,?,?)').run(observation.source ?? 'backend_response', id, id, JSON.stringify(record.usage));
       this.ledger(`${id}:settle`, record, tokens === null ? 'unknown_usage' : 'settlement', tokens ?? 0, { unknown: tokens === null, observation });
       this.db.prepare('INSERT INTO outbox(created,request_id,event) VALUES(?,?,?)').run(this.clock(), id, JSON.stringify({ type: 'request.finished', request: record }));
       return record;
@@ -181,6 +198,7 @@ export class Store {
       const record = this.request(id);
       requireValue(record?.finished_at && record.accounting === 'reconciliation_required', 'Only finished unresolved requests can be reconciled');
       this.db.prepare('UPDATE requests SET tokens=?,reserved=0 WHERE id=?').run(tokens, id);
+      this.settleBudgets(id, tokens);
       this.ledger(randomUUID(), record, 'operator_adjustment', tokens, { reason });
       this.audit('operator', 'usage.resolve', id, { tokens, reason });
       return this.update(id, { accounting: 'settled', usage: { total: tokens, source: 'operator_adjustment', reason } });
@@ -209,6 +227,11 @@ export class Store {
       if (manifest.recording === 'metadata' || ['partial', 'failed'].includes(manifest.state)) return;
       const used = this.db.prepare('SELECT bytes FROM archive_usage WHERE id=1').get().bytes;
       if (used + payload.length > this.archiveMaxBytes) throw new ServiceError(507, 'recording_failed', 'Archive capacity exhausted');
+      const record = this.request(id);
+      if (record.policy.archive_max_bytes) {
+        const projectBytes = this.db.prepare("SELECT COALESCE(SUM(json_extract(c.data,'$.bytes')),0) AS bytes FROM captures c JOIN requests r ON r.id=c.request_id WHERE r.project_id=?").get(record.project_id).bytes;
+        if (projectBytes + payload.length > record.policy.archive_max_bytes) throw new ServiceError(507, 'recording_failed', 'Project archive capacity exhausted');
+      }
       const sequence = this.db.prepare('SELECT COUNT(*) AS count FROM chunks WHERE request_id=? AND direction=?').get(id, direction).count;
       this.db.prepare('INSERT INTO chunks VALUES(?,?,?,?,?,?)').run(id, direction, sequence, payload, digest(payload), this.clock());
       this.db.prepare('UPDATE archive_usage SET bytes=bytes+? WHERE id=1').run(payload.length);
@@ -238,3 +261,5 @@ export class Store {
     });
   }
 }
+
+Object.assign(Store.prototype, operations);
