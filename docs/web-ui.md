@@ -13,6 +13,8 @@ Sign in with `ROUTER4U_ADMIN_KEY` from your installation's private environment f
 5. Use **Requests** to inspect project history, cancel work, or explicitly download an original exchange. Exports can contain sensitive prompts and responses.
 6. Use **Overview** to pause admissions and **Activity** to inspect audit events or release uncertain occupancy after checking the upstream outcome. Account mutations require paused admissions, drained active work, and no uncertain occupancy.
 
+Leave **Concurrent requests**, **Daily request limit**, or **Daily token estimate limit** blank for no project limit on that dimension. Blank values are saved as JSON `null` and displayed as **Unlimited**. Service, route, per-minute rate, and additional budget limits still apply; inspect **Effective policy** to see them. To remove the corresponding service-wide limits, set `concurrency`, `daily_requests`, and `daily_tokens` to `null` in Settings. Project `requests_per_minute` defaults to 60 and can be set to `null` in Advanced policy when no project request-rate cap is wanted.
+
 Project forms expose common limits and preserve advanced policy fields in a JSON editor. Default issued keys do not include `exchange:export`. The existing admin API and CLI remain available for automation and recovery.
 
 ## Configuration and persistence

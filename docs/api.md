@@ -54,6 +54,8 @@ Audit/outbox polling is non-destructive. Persist the last processed sequence aft
 
 ## Policy
 
+Set `concurrency`, `daily_requests`, `daily_tokens`, or `requests_per_minute` to JSON `null` to remove that limit at the project or service scope. Omitted fields retain their defaults; zero, empty strings, and negative values are invalid. Unlimited limits do not disable usage accounting, reservations, other scopes, additional budgets, or provider restrictions. The web project form saves blank concurrency and daily-limit fields as `null`.
+
 Use [the example policy](../examples/policy.json). Unknown policy fields and unsupported enforcement modes are rejected.
 
 | Field | Meaning |

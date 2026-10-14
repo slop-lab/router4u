@@ -18,7 +18,7 @@ export function validatePolicy(input) {
   requireValue(Array.isArray(policy.routes) && policy.routes.length > 0 && policy.routes.every(value => typeof value === 'string'), 'routes must list authorized routes');
   requireValue(['observe', 'estimate'].includes(policy.token_mode), 'Strict token budgets are unsupported: upstream consumption has no verified bound');
   requireValue(['required', 'best_effort', 'metadata'].includes(policy.recording), 'Invalid recording policy');
-  for (const key of ['concurrency', 'requests_per_minute', 'daily_requests', 'daily_tokens', 'token_estimate', 'deadline_ms']) {
+  for (const key of ['token_estimate', 'deadline_ms']) {
     requireValue(Number.isSafeInteger(policy[key]) && policy[key] > 0, `${key} must be a positive safe integer`);
   }
   validateOptionalLimits(policy);
@@ -41,7 +41,7 @@ export function validateConfig(input) {
   };
   requireValue(typeof config.host === 'string', 'host must be a string');
   requireValue(Number.isInteger(config.port) && config.port >= 0 && config.port <= 65535, 'Invalid port');
-  for (const key of ['max_request_bytes', 'max_response_bytes', 'archive_max_bytes', 'concurrency', 'daily_requests', 'daily_tokens']) {
+  for (const key of ['max_request_bytes', 'max_response_bytes', 'archive_max_bytes']) {
     requireValue(Number.isSafeInteger(config[key]) && config[key] > 0, `${key} must be positive`);
   }
   requireValue(Array.isArray(config.routes) && config.routes.length > 0, 'At least one route is required');
@@ -95,7 +95,7 @@ export function periodFor(now, timezone = 'UTC') {
 }
 
 export function validateOptionalLimits(value) {
-  for (const key of ['tokens_per_minute', 'requests_per_minute', 'archive_max_bytes', 'retention_days', 'concurrency']) {
+  for (const key of ['tokens_per_minute', 'requests_per_minute', 'archive_max_bytes', 'retention_days', 'concurrency', 'daily_requests', 'daily_tokens']) {
     if (value[key] != null) requireValue(Number.isSafeInteger(value[key]) && value[key] > 0, `${key} must be a positive safe integer or null`);
   }
 }

@@ -143,10 +143,10 @@ export class Store {
       const active = this.db.prepare('SELECT COUNT(*) AS count FROM requests WHERE active=1').get().count;
       const projectActive = this.db.prepare('SELECT COUNT(*) AS count FROM requests WHERE project_id=? AND active=1').get(project.id).count;
       const rate = this.db.prepare('SELECT COUNT(*) AS count FROM requests WHERE project_id=? AND created>?').get(project.id, now - 60000).count;
-      if (active >= config.concurrency || projectActive >= policy.concurrency) throw new ServiceError(429, 'local_capacity_exhausted', 'Active request limit reached', project.id, true);
-      if (rate >= policy.requests_per_minute || projectTotals.requests >= policy.daily_requests || serviceTotals.requests >= config.daily_requests) throw new ServiceError(429, 'local_quota_exhausted', 'Local request allowance exhausted', project.id, true);
-      if ((policy.token_mode === 'estimate' && projectTotals.settled_tokens + projectTotals.reserved_tokens + reservation > policy.daily_tokens)
-        || serviceTotals.settled_tokens + serviceTotals.reserved_tokens + reservation > config.daily_tokens) {
+      if ((config.concurrency != null && active >= config.concurrency) || (policy.concurrency != null && projectActive >= policy.concurrency)) throw new ServiceError(429, 'local_capacity_exhausted', 'Active request limit reached', project.id, true);
+      if ((policy.requests_per_minute != null && rate >= policy.requests_per_minute) || (policy.daily_requests != null && projectTotals.requests >= policy.daily_requests) || (config.daily_requests != null && serviceTotals.requests >= config.daily_requests)) throw new ServiceError(429, 'local_quota_exhausted', 'Local request allowance exhausted', project.id, true);
+      if ((policy.token_mode === 'estimate' && policy.daily_tokens != null && projectTotals.settled_tokens + projectTotals.reserved_tokens + reservation > policy.daily_tokens)
+        || (config.daily_tokens != null && serviceTotals.settled_tokens + serviceTotals.reserved_tokens + reservation > config.daily_tokens)) {
         throw new ServiceError(429, 'local_quota_exhausted', 'Estimated token allowance exhausted', project.id, true);
       }
       const id = randomUUID();

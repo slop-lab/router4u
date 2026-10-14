@@ -68,6 +68,22 @@ try {
   await page.getByLabel('Authorized routes').selectOption(['local']);
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
   await page.getByRole('heading', { name: 'browser-app', exact: true }).waitFor();
+  const limitLabels = ['Concurrent requests', 'Daily request limit', 'Daily token estimate limit'];
+  for (const key of ['concurrency', 'daily_requests', 'daily_tokens']) assert.equal(gateway.store.project('browser-app').policy[key], null);
+  await page.getByRole('button', { name: 'Edit policy', exact: true }).click();
+  for (const label of limitLabels) {
+    assert.equal(await page.getByLabel(label, { exact: true }).inputValue(), '');
+    await page.getByLabel(label, { exact: true }).fill('10');
+  }
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('heading', { name: 'browser-app', exact: true }).waitFor();
+  assert.equal(gateway.store.project('browser-app').policy.daily_requests, 10);
+  await page.getByRole('button', { name: 'Edit policy', exact: true }).click();
+  for (const label of limitLabels) await page.getByLabel(label, { exact: true }).fill('');
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await page.getByRole('heading', { name: 'browser-app', exact: true }).waitFor();
+  for (const key of ['concurrency', 'daily_requests', 'daily_tokens']) assert.equal(gateway.store.project('browser-app').policy[key], null);
+
   await page.getByRole('button', { name: 'Issue project key' }).click();
   const issued = JSON.parse(await page.locator('#detail pre').textContent());
   assert.match(issued.key, /^r4u_/);
@@ -95,7 +111,8 @@ try {
   await page.getByText('Configuration saved and applied', { exact: true }).waitFor();
   assert.equal(gateway.config.daily_requests, 12345);
   await page.getByRole('link', { name: 'Activity', exact: true }).click();
-  await page.getByRole('cell', { name: 'project.policy', exact: true }).waitFor();
+  await page.getByRole('cell', { name: 'project.policy', exact: true }).first().waitFor();
+  assert.equal(await page.getByRole('cell', { name: 'project.policy', exact: true }).count(), 3);
   await page.getByRole('link', { name: 'Overview', exact: true }).click();
   await page.getByRole('button', { name: 'Pause admissions', exact: true }).click();
   await page.getByRole('button', { name: 'Resume admissions', exact: true }).waitFor();

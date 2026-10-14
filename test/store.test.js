@@ -53,3 +53,43 @@ test('SSE parser preserves UTF-8 across arbitrary transport boundaries', () => {
   assert.equal(observer.outcome, 'completed');
   assert.equal(observer.usage.total, 15);
 });
+
+test('Unlimited limits retain reservations and still enforce explicit project and service limits', context => {
+  const directory = mkdtempSync(join(tmpdir(), 'router4u-unlimited-'));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  const store = new Store(directory); context.after(() => store.close());
+  const route = { id: 'test', profile: 'api_key', models: ['test-model'], protocols: ['responses'], base_url: 'http://localhost/v1', key_env: 'KEY' };
+  const unlimited = { concurrency: null, requests_per_minute: null, daily_requests: null, daily_tokens: null };
+  const config = validateConfig({ routes: [route], ...unlimited });
+  const policy = { routes: ['test'], ...unlimited, token_estimate: 2000000 };
+  store.putProject('project', policy);
+  const principal = store.authenticate(store.issueKey('project').key);
+  for (let index = 0; index < 70; index++) store.admit(principal, route, 'responses', config);
+  assert.equal(store.status('project').reserved_tokens, 140000000);
+  assert.equal(store.project('project').policy.daily_tokens, null);
+  for (const key of Object.keys(unlimited)) {
+    store.putProject('project', { ...policy, [key]: 1 });
+    assert.throws(() => store.admit(principal, route, 'responses', config), error => error.status === 429);
+    store.putProject('project', policy);
+    assert.throws(() => store.admit(principal, route, 'responses', { ...config, [key]: 1 }), error => error.status === 429);
+  }
+  assert.throws(() => store.admit(principal, { ...route, concurrency: 1 }, 'responses', config), error => error.status === 429);
+  store.putProject('project', { ...policy, budgets: [{ id: 'daily', resource: 'requests', period: 'day', limit: 1 }] });
+  assert.throws(() => store.admit(principal, route, 'responses', config), error => error.status === 429);
+});
+
+test('Nullable limits accept positive integers and null while omitted fields retain defaults', () => {
+  const route = { id: 'test', profile: 'api_key', models: ['test-model'], protocols: ['responses'], base_url: 'http://localhost/v1', key_env: 'KEY' };
+  for (const key of ['concurrency', 'requests_per_minute', 'daily_requests', 'daily_tokens']) {
+    for (const value of [null, 1]) {
+      assert.equal(validatePolicy({ routes: ['test'], [key]: value })[key], value);
+      assert.equal(validateConfig({ routes: [route], [key]: value })[key], value);
+    }
+    for (const value of [0, -1, 1.5, '', 'unlimited', false]) {
+      assert.throws(() => validatePolicy({ routes: ['test'], [key]: value }));
+      assert.throws(() => validateConfig({ routes: [route], [key]: value }));
+    }
+  }
+  assert.equal(validatePolicy({ routes: ['test'] }).concurrency, 4);
+  assert.equal(validateConfig({ routes: [route] }).concurrency, 32);
+});
