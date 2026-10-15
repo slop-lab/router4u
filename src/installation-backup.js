@@ -29,6 +29,7 @@ function inventory(directory, relative = '') {
 }
 export async function backupInstallation(store, { destination, configPath, backendConfig, authDirectory, environmentFile }) {
   if (existsSync(destination)) throw new Error('Backup destination already exists');
+  requireSeparate(store.logs.directory, destination);
   requireSeparate(authDirectory, destination); requireSeparate(join(dirname(configPath), 'partitions'), destination);
   const temporary = `${destination}.pending-${randomUUID()}`;
   mkdirSync(temporary, { mode: 0o700 });
@@ -36,7 +37,7 @@ export async function backupInstallation(store, { destination, configPath, backe
     mkdirSync(join(temporary, 'data'), { mode: 0o700 });
     await backup(store.db, join(temporary, 'data/router4u.sqlite'));
     chmodSync(join(temporary, 'data/router4u.sqlite'), 0o600);
-    store.logs.copyTo(join(temporary, 'data/logs'));
+    store.logs.copyTo(join(temporary, 'data/transcripts'));
     for (const [source, name] of [[configPath, 'router4u.json'], [backendConfig, 'cliproxyapi.yaml'], [authDirectory, 'auth'], [environmentFile, environmentFile.endsWith('.json') ? 'secrets.json' : '.env']]) copyTree(source, join(temporary, name));
     for (const name of ['partitions', 'partitions.compose.yaml', 'compose.env']) {
       const source = join(dirname(configPath), name); if (existsSync(source)) copyTree(source, join(temporary, name));

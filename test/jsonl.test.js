@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, appendFileSync, statSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, appendFileSync, statSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JsonlLogs } from '../src/jsonl.js';
-import { fixture } from './helpers.js';
+import { fixture, adminKey } from './helpers.js';
 import { migrateJsonl } from '../src/migrate-jsonl.js';
 import { Store } from '../src/store.js';
 
@@ -62,7 +62,7 @@ test('Stopped schema conversion preserves keys, usage, payloads and audit record
   const directory = setup.gateway.config.data_dir;
   await setup.gateway.close();
   setup.gateway.close = async () => {};
-  rmSync(join(directory, 'logs'), { recursive: true });
+  rmSync(join(directory, 'transcripts'), { recursive: true });
   assert.deepEqual(migrateJsonl(directory), { converted: true, schema: 3 });
   const converted = new Store(directory);
   try {
@@ -85,4 +85,23 @@ test('A rolled-back capture append leaves no extra JSONL line', async t => {
   store.db.exec('DROP TRIGGER reject_capture');
   store.append(record.id, 'request', Buffer.from('retained'));
   assert.equal(Buffer.from(store.captured(record.id).chunks[0].payload, 'base64').toString(), 'retained');
+});
+
+
+test('Configured transcript storage is separate from operational data and cannot be hot-reloaded', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'r4u-transcripts-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const setup = await fixture(t, { config: { transcript_dir: directory } });
+  const response = await setup.call('/v1/responses', { body: { model: 'test-model', input: 'Separate volume', store: false } });
+  const id = response.headers.get('x-router4u-request-id'); await response.text();
+  assert.equal(response.status, 200);
+  assert.equal(setup.gateway.store.logs.directory, directory);
+  assert.ok(existsSync(join(directory, 'exchanges', `${id}.jsonl`)));
+  assert.equal(existsSync(join(setup.directory, 'transcripts')), false);
+  const headers = { authorization: `Bearer ${adminKey}`, 'content-type': 'application/json' };
+  const snapshot = await (await fetch(setup.url + '/admin/config', { headers })).json();
+  delete snapshot.config.revision;
+  const changed = await fetch(setup.url + '/admin/config', { method: 'PUT', headers, body: JSON.stringify({ revision: snapshot.revision, config: { ...snapshot.config, transcript_dir: directory + '-other' } }) });
+  assert.equal(changed.status, 400);
+  assert.match((await changed.json()).error.message, /restart/);
 });

@@ -2,9 +2,17 @@
 
 Request history, original request/response bodies, audit entries, and notification events are JSONL files. SQLite contains identities, configuration, transactional usage/reservations, budget bookings, minimal request recovery state, and capture size/retention controls. It does not contain body chunks, a request-history document, or audit/event tables.
 
+## Runtime diagnostics versus transcripts
+
+Runtime diagnostics are stdout/stderr, available through `docker logs router4u`. Docker's `json-file` driver wraps output in JSON records; the documented deployment rotates these files at 10 MiB with three files retained. Docker manages their host location. They are not stored in the transcript volume or in `data/logs`. Upstream diagnostic output is also treated as private and is not promised to be token-free.
+
+Transcripts, request history, audit actions, and event notifications are sensitive application records with a separate storage and backup lifecycle. The gateway configuration's `transcript_dir` selects their directory and requires a restart to change. Bundled mode defaults to `/var/lib/router4u-transcripts`; mount a separate named volume there. Compose mounts `.runtime/transcripts` at `/transcripts`. Local test embeddings default to `data_dir/transcripts`.
+
+Storage separation lets you set different backup, retention, and access policies; the gateway can still read both volumes. Do not mount either volume into consuming applications.
+
 ## Location and format
 
-Bundled installations store logs at `/var/lib/router4u/data/logs` in the persistent volume. Compose stores them under `.runtime/data/logs` on the host. Files are private (mode 0600), directories are mode 0700.
+Bundled installations store logs at `/var/lib/router4u-transcripts` in the separate `router4u-transcripts` volume. Compose stores them under `.runtime/transcripts` on the host. Files are private (mode 0600), directories are mode 0700.
 
 | File | Records |
 |---|---|
@@ -23,7 +31,7 @@ Copy logs from the container without reading its credential directory:
 
 ```sh
 mkdir -p .runtime/log-analysis
-docker cp router4u:/var/lib/router4u/data/logs/. .runtime/log-analysis/
+docker cp router4u:/var/lib/router4u-transcripts/. .runtime/log-analysis/
 ```
 
 A copy taken during active requests is a partial snapshot. Stop the service before a complete consistent backup.
@@ -58,16 +66,21 @@ History, audit, and notification writes happen after the operational transaction
 
 Configured capture retention removes completed exchange files and retains accounting and request/audit history. History and audit do not rotate automatically. Archive capacity counts original payload bytes, not JSON/base64 overhead or history files; monitor actual volume space. If archiving history or audit manually, stop the installation first and expect those records to disappear from the UI. Do not modify accounting state to delete logs.
 
-Both gateway backup and full installation backup include the JSONL directory. A SQLite-only copy no longer preserves logs. Whole-volume backups must include `data/logs` together with configuration, credentials, and SQLite state.
+Both gateway backup and full installation backup include the JSONL directory. A SQLite-only copy no longer preserves logs. Back up both the state and transcript volumes while the service is stopped. Full backup bundles stage transcript files at `data/transcripts`; restore those files into the separate transcript volume and review `transcript_dir` before startup.
 
 ## Convert an existing schema-2 installation
 
-Stop the service and use the new image for the explicit conversion. It retains project keys, provider credentials, usage, and recorded exchanges, moves history/audit/body records to JSONL, and vacuums removed database content. No inference or provider login is performed.
+Stop the service, set `transcript_dir` in its installation configuration to `/var/lib/router4u-transcripts`, and use the new image with both volumes for the explicit conversion. It retains project keys, provider credentials, usage, and recorded exchanges, moves history/audit/body records to JSONL, and vacuums removed database content. No inference or provider login is performed.
 
 ```sh
 docker stop -t 30 router4u
-docker run --rm -v router4u-data:/var/lib/router4u router4u:local \
+docker run --rm -v router4u-data:/var/lib/router4u \
+  -v router4u-transcripts:/var/lib/router4u-transcripts router4u:local \
   migrate-jsonl --config /var/lib/router4u/router4u.json
 ```
 
 Then recreate the container with the new image and the same volume as described in the [Docker guide](docker.md#rebuild-and-restart). Conversion requires free space for the extracted logs and SQLite vacuum. Fresh installations initialize schema 3 directly. Normal startup rejects older schemas; it does not silently convert them. Schema-2 backup bundles are not accepted as schema-3 bundles.
+
+## Move a previous combined log directory
+
+Stop the installation, copy the complete previous `data/logs` directory into the new transcript volume, and verify all files before removing the source. Set `transcript_dir` in the installation configuration to the new mount path, then recreate the container with both volume mounts. Browser overrides cannot change this restart-only field. Keep project keys, OAuth credentials, and SQLite state unchanged. Startup rejects the old combined `data/logs` layout instead of silently opening an empty transcript directory.

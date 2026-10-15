@@ -12,6 +12,7 @@ services:
     volumes:
       - "${ROUTER4U_RUNTIME_DIR:-./.runtime}:/config:ro"
       - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/data:/state"
+      - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/transcripts:/transcripts"
     networks: [applications, infrastructure]
     read_only: true
     tmpfs: [/tmp]
@@ -58,6 +59,7 @@ services:
     volumes:
       - "${ROUTER4U_RUNTIME_DIR:-./.runtime}:/config:ro"
       - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/data:/state"
+      - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/transcripts:/transcripts"
       - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/auth:/auth:ro"
       - "${ROUTER4U_RUNTIME_DIR:-./.runtime}/backups:/backups"
       - "${ROUTER4U_RESTORE_DIR:-./.runtime/restores}:/restores"

@@ -16,7 +16,7 @@ The bundled backend binds to container loopback. The gateway listens on port 947
 
 Only the gateway should reach backend inference and management. In the separate Compose topology, give the gateway both an application network and an infrastructure network; attach CLIProxyAPI only to the infrastructure network. Do not publish its management port. Bind gateway ingress to the intended network and set `allow_private_http:true` only for an explicitly trusted private backend connection. Use authenticated TLS for traffic crossing an untrusted network. A host administrator remains outside this isolation guarantee.
 
-The image contains the gateway, pinned backend, CA certificates, and process supervisor without development dependencies. Its named volume at `/var/lib/router4u` holds private keys, configuration, OAuth credentials, and SQLite data. Bind mounts must be writable by the container user (UID/GID 1000 by default). In Compose, configuration is mounted at `/config` and gateway data at `/state`; do not mix these layouts.
+The image contains the gateway, pinned backend, CA certificates, and process supervisor without development dependencies. Its state volume at `/var/lib/router4u` holds private keys, configuration, OAuth credentials, and SQLite data; `/var/lib/router4u-transcripts` is a separate volume for sensitive JSONL records. Bind mounts must be writable by the container user (UID/GID 1000 by default). In Compose, configuration is mounted at `/config` and gateway data at `/state`; do not mix these layouts.
 
 ## Route and account isolation
 
@@ -53,7 +53,7 @@ Revoking a principal or disabling a project affects new work. To stop existing w
 
 ## Backups and restore
 
-For bundled mode, pause admissions, inspect active work, stop the container, and copy the entire named volume. Restore into a fresh volume with the same ownership. This preserves `secrets.json`, gateway/backend configuration, OAuth files, SQLite data, and JSONL logs together. Do not copy a live SQLite database without a supported snapshot operation or mix restored files with an old WAL. Keep exactly one active refresh owner.
+For bundled mode, pause admissions, inspect active work, stop the container, and copy both the state and transcript named volumes. Restore into a fresh volume with the same ownership. This preserves `secrets.json`, gateway/backend configuration, OAuth files, SQLite data, and JSONL logs together. Do not copy a live SQLite database without a supported snapshot operation or mix restored files with an old WAL. Keep exactly one active refresh owner.
 
 The separate Compose topology has explicit `backup-installation` and `restore-installation` commands with integrity checks; see [the Compose backup procedure](compose.md#back-up-and-restore). The gateway-state `backup` command (SQLite and JSONL) does not include backend credentials. Synthetic backup tests cannot prove that restored rotating provider tokens will remain accepted.
 

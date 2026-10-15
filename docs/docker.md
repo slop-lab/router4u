@@ -7,14 +7,16 @@ Docker Engine is sufficient; host Node, Go, Compose, and a host `.env` file are 
 ```sh
 docker build -t router4u:local .
 docker run -d --name router4u --restart unless-stopped \
+  --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
   -p 127.0.0.1:9470:9470 \
-  -v router4u-data:/var/lib/router4u router4u:local
+  -v router4u-data:/var/lib/router4u \
+  -v router4u-transcripts:/var/lib/router4u-transcripts router4u:local
 docker exec router4u router4u admin-key show
 ```
 
 First start generates private keys and a disabled `personal` connection. Sign in at `http://127.0.0.1:9470/` using the explicitly retrieved administrator key, connect the account, select models, and enable routing. Keys are never printed in ordinary startup logs. An optional `ROUTER4U_ADMIN_KEY` environment value is accepted on first initialization and persisted; a conflicting value on later startup is rejected.
 
-The volume stores `secrets.json`, gateway/backend configuration, OAuth credentials, and `data/` containing the SQLite operational state and JSONL logs. Internal backend keys are implementation details, not user configuration. Never commit or share this volume. Named volumes avoid host UID/GID setup; bind mounts must be writable by the container user (UID/GID 1000 by default). Do not use an anonymous volume or delete the named volume when replacing the container.
+The `router4u-data` volume stores `secrets.json`, gateway/backend configuration, OAuth credentials, and SQLite operational state under `data/`. The separate `router4u-transcripts` volume stores sensitive request/response bodies, request history, and audit/event JSONL. Internal backend keys are implementation details, not user configuration. Never commit or share this volume. Named volumes avoid host UID/GID setup; bind mounts must be writable by the container user (UID/GID 1000 by default). Do not use an anonymous volume or delete the named volume when replacing the container.
 
 Gateway listens on `0.0.0.0:9470` inside the container. Set the **host** bind with Docker `-p`, not a container environment variable:
 
@@ -36,12 +38,13 @@ To rotate the administrator key, first stop the installation; rotation refuses t
 
 ```sh
 docker stop -t 30 router4u
-docker run --rm -v router4u-data:/var/lib/router4u router4u:local admin-key rotate
+docker run --rm -v router4u-data:/var/lib/router4u \
+  -v router4u-transcripts:/var/lib/router4u-transcripts router4u:local admin-key rotate
 docker start router4u
 docker exec router4u router4u admin-key show
 ```
 
-For a complete cold backup, pause admissions, inspect active requests, stop the container, then copy the **entire** volume using a temporary container. Keep both processes stopped for the whole copy. The backup includes live credentials and original payloads. Restore into a new volume; start only one installation using those credentials. Do not blindly replay uncertain requests. CLIProxyAPI remains the only OAuth and refresh owner.
+For a complete cold backup, pause admissions, inspect active requests, stop the container, then copy **both** the state and transcript volumes using a temporary container. Keep both processes stopped for the whole copy. The backup includes live credentials and original payloads. Restore into a new volume; start only one installation using those credentials. Do not blindly replay uncertain requests. CLIProxyAPI remains the only OAuth and refresh owner.
 
 Bundled mode currently starts one backend. Different project-to-account eligibility requires the [separate Compose partition topology](compose.md); do not combine differently authorized credential sets into one pool.
 
@@ -54,8 +57,10 @@ docker build -t router4u:local .
 docker stop -t 30 router4u
 docker rm router4u
 docker run -d --name router4u --restart unless-stopped \
+  --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
   -p 127.0.0.1:9470:9470 \
-  -v router4u-data:/var/lib/router4u router4u:local
+  -v router4u-data:/var/lib/router4u \
+  -v router4u-transcripts:/var/lib/router4u-transcripts router4u:local
 ```
 
 Preserve any custom network or host-port options when recreating it. Browser sessions expire on gateway restart; retrieve the administrator key with `docker exec router4u router4u admin-key show` and sign in again. A fresh volume creates new keys and requires account setup and new application keys. Reusing the current volume retains configuration, accounts, and project keys. Incompatible database schemas are rejected; no automatic schema conversion is provided.
@@ -72,7 +77,7 @@ For API-key providers, edit the private CLIProxyAPI configuration in the volume 
 
 ## Backup and recovery
 
-Back up the complete stopped volume, including `secrets.json`, both configuration files, `auth/`, and `data/`. Restore to a fresh volume with the same ownership and start exactly one installation. The [operations guide](operations.md) explains uncertain requests and audited corrections. A SQLite-only copy omits JSONL logs, upstream credentials, and the administrator key. See [JSONL storage and conversion](logs.md).
+Back up both stopped volumes: `router4u-data` holds `secrets.json`, configuration, `auth/`, and database state in `data/`; `router4u-transcripts` holds the sensitive JSONL records. Restore to a fresh volume with the same ownership and start exactly one installation. The [operations guide](operations.md) explains uncertain requests and audited corrections. A SQLite-only copy omits JSONL logs, upstream credentials, and the administrator key. See [JSONL storage and conversion](logs.md).
 
 ## Multiple account partitions
 

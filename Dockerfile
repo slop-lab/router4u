@@ -8,7 +8,7 @@ RUN test "$(dpkg --print-architecture)" = amd64 \
 FROM node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates util-linux tini \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /var/lib/router4u && chown node:node /var/lib/router4u
+    && mkdir -p /var/lib/router4u /var/lib/router4u-transcripts && chown node:node /var/lib/router4u /var/lib/router4u-transcripts
 WORKDIR /app
 COPY --from=backend-download --chmod=0555 /backend/cli-proxy-api /usr/local/bin/cli-proxy-api
 COPY --chown=node:node package.json ./

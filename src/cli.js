@@ -94,7 +94,7 @@ api /admin/PATH [--method METHOD] [--file BODY.json]
 All online commands use --url and ROUTER4U_ADMIN_KEY. Local .runtime/secrets.json is loaded if present (legacy .env is also supported).
 Project keys are displayed only on issuance. Full exchange exports contain sensitive original data.`);
   envFile();
-  if (command === 'migrate-jsonl') return print(migrateJsonl(loadConfig(values.config).data_dir));
+  if (command === 'migrate-jsonl') { const config = loadConfig(values.config); return print(migrateJsonl(config.data_dir, config.transcript_dir)); }
   if (command === 'serve') {
     const config = loadConfig(values.config);
     const unlock = lockDirectory(config.data_dir);
@@ -146,7 +146,7 @@ Project keys are displayed only on issuance. Full exchange exports contain sensi
       try { const response = await fetch(`${route.base_url}/models`, { signal: AbortSignal.timeout(1500) }); await response.body?.cancel(); reachable = true; } catch {}
       if (reachable) throw new Error('Stop all configured backends before installation backup');
     }
-    const unlock = lockDirectory(config.data_dir); const store = new Store(config.data_dir);
+    const unlock = lockDirectory(config.data_dir); const store = new Store(config.data_dir, { transcriptDirectory: config.transcript_dir });
     try { print(await backupInstallation(store, { destination: values.file, configPath: values.config, backendConfig: values['backend-config'], authDirectory: values['auth-dir'], environmentFile: values['env-file'] })); }
     finally { store.close(); unlock(); }
     return;
@@ -155,12 +155,12 @@ Project keys are displayed only on issuance. Full exchange exports contain sensi
     if (!values.file) throw new Error('Specify a new destination directory using --file');
     const config = loadConfig(values.config);
     const unlock = lockDirectory(config.data_dir);
-    const store = new Store(config.data_dir);
+    const store = new Store(config.data_dir, { transcriptDirectory: config.transcript_dir });
     try {
       mkdirSync(values.file, { mode: 0o700 });
       await backup(store.db, join(values.file, 'router4u.sqlite'));
       chmodSync(join(values.file, 'router4u.sqlite'), 0o600);
-      store.logs.copyTo(join(values.file, 'logs'));
+      store.logs.copyTo(join(values.file, 'transcripts'));
       cpSync(values.config, join(values.file, 'router4u.json'));
       print('Gateway ledger and archive backed up. Separately back up the stopped backend auth directory, configuration, and secrets.json. See docs/operations.md.');
     } finally { store.close(); unlock(); }

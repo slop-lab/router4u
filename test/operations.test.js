@@ -58,7 +58,7 @@ test('Database and JSONL backup restores payload integrity and unresolved accoun
   store.append(record.id, 'request', Buffer.from('sk-inert-test-only <script>no execution</script>'));
   store.dispatch(record.id, 'test-model');
   await backup(store.db, join(restoredDirectory, 'router4u.sqlite'));
-  store.logs.copyTo(join(restoredDirectory, 'logs'));
+  store.logs.copyTo(join(restoredDirectory, 'transcripts'));
   store.close();
   const restored = new Store(restoredDirectory);
   context.after(() => restored.close());

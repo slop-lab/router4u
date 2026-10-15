@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { existsSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, cpSync, rmSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { JsonlLogs } from './jsonl.js';
 import { Store } from './store.js';
@@ -7,7 +7,7 @@ import { lockDirectory } from './lock.js';
 
 // Run only while the installation is stopped. The schema switch is transactional;
 // deterministic per-request files make an interrupted pre-commit run repeatable.
-export function migrateJsonl(directory) {
+export function migrateJsonl(directory, transcriptDirectory = join(directory, 'transcripts')) {
   const unlock = lockDirectory(directory);
   let db;
   const temporary = join(directory, 'logs-conversion');
@@ -38,10 +38,12 @@ export function migrateJsonl(directory) {
       }
       for (const row of db.prepare('SELECT * FROM audit ORDER BY sequence').iterate()) logs.append('audit', row);
       for (const row of db.prepare('SELECT * FROM outbox ORDER BY sequence').iterate()) logs.append('events', row);
-      const destination = join(directory, 'logs');
+      const destination = transcriptDirectory;
       // Schema 2 never owns this path; a previous interrupted conversion can be replaced.
-      if (existsSync(destination)) rmSync(destination, { recursive: true, force: true });
-      renameSync(temporary, destination);
+      if (existsSync(destination) && readdirSync(destination).length) throw new Error('Transcript destination must be empty for conversion');
+      mkdirSync(destination, { recursive: true, mode: 0o700 });
+      cpSync(temporary, destination, { recursive: true });
+      rmSync(temporary, { recursive: true });
       db.exec('DROP TABLE chunks; DROP TABLE audit; DROP TABLE outbox; PRAGMA user_version=3; COMMIT');
     } catch (error) { db.exec('ROLLBACK'); throw error; }
     db.exec('PRAGMA wal_checkpoint(TRUNCATE); VACUUM; PRAGMA wal_checkpoint(TRUNCATE)');

@@ -15,8 +15,10 @@ Use ChatGPT/Codex account connections only for yourself and your own application
 ```sh
 docker build -t router4u:local .
 docker run -d --name router4u --restart unless-stopped \
+  --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
   -p 127.0.0.1:9470:9470 \
-  -v router4u-data:/var/lib/router4u router4u:local
+  -v router4u-data:/var/lib/router4u \
+  -v router4u-transcripts:/var/lib/router4u-transcripts router4u:local
 docker exec router4u router4u admin-key show
 ```
 
@@ -31,7 +33,7 @@ Set the host bind address and port with Docker `-p`: for example `-p 192.168.1.1
 
 The initial connection is disabled and has no model allowlist. No inference is admitted until it is configured and enabled. Use the [web control room](docs/web-ui.md) for everyday administration. Use `docker exec router4u router4u health` for passive operational status.
 
-Follow [Docker installation and account operations](docs/docker.md) for persistence, callback submission, project keys, and complete backups. The container supervises Gateway and CLIProxyAPI; failure of either ends the container so Docker can restart it. State and credentials survive container replacement in the volume.
+Follow [Docker installation and account operations](docs/docker.md) for persistence, callback submission, project keys, and complete backups. The container supervises Gateway and CLIProxyAPI; failure of either ends the container so Docker can restart it. Operational state and credentials persist in `router4u-data`; sensitive JSONL records persist separately in `router4u-transcripts`. Runtime diagnostics use Docker logging with bounded rotation.
 
 Use the [Compose partition topology](docs/compose.md) when projects need separate backend account sets. The default single-container installation runs one backend.
 

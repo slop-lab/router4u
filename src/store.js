@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { mkdirSync, chmodSync } from 'node:fs';
+import { mkdirSync, chmodSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ServiceError, requireValue } from './errors.js';
 import { JsonlLogs } from './jsonl.js';
@@ -11,7 +11,7 @@ export const digest = value => createHash('sha256').update(value).digest('hex');
 const decode = row => row ? JSON.parse(row.data) : null;
 
 export class Store {
-  constructor(directory, { clock = Date.now, archiveMaxBytes = 1073741824 } = {}) {
+  constructor(directory, { clock = Date.now, archiveMaxBytes = 1073741824, transcriptDirectory = join(directory, 'transcripts') } = {}) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     this.path = join(directory, 'router4u.sqlite');
     this.db = new DatabaseSync(this.path);
@@ -19,7 +19,8 @@ export class Store {
     const hasTables = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").get();
     if (version !== 3 && (version !== 0 || hasTables)) { this.db.close(); throw new Error('Unsupported database schema; automatic conversion is not available'); }
     chmodSync(this.path, 0o600);
-    this.logs = new JsonlLogs(join(directory, 'logs'));
+    if (existsSync(join(directory, 'logs'))) { this.db.close(); throw new Error('Move the previous data/logs directory into the configured transcript directory before starting'); }
+    this.logs = new JsonlLogs(transcriptDirectory);
     this.pendingLogs = null;
     this.activeRecords = new Map();
     this.captureDetails = new Map();

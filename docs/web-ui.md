@@ -21,7 +21,7 @@ Project forms expose common limits and preserve advanced policy fields in a JSON
 
 **Settings → Save & apply** validates the full configuration, checks the revision to prevent stale overwrites, and persists it transactionally in the existing SQLite data volume. Read-only Docker configuration mounts remain supported. Changes survive gateway recreation and are included in database backups.
 
-Once saved in the browser, mutable configuration from SQLite takes precedence over the installation JSON. Host, port, data directory, operator-key environment name, and maintenance interval still come from the installation file at startup. Those fields cannot be changed by a browser save.
+Once saved in the browser, mutable configuration from SQLite takes precedence over the installation JSON. Host, port, data directory, transcript directory, operator-key environment name, and maintenance interval still come from the installation file at startup. Those fields cannot be changed by a browser save.
 
 **Reload installation file** (or the existing CLI `reload`) explicitly replaces the browser override with the validated file configuration. A dry run does not change the active source. Download the active configuration before switching if you want to keep browser edits. Reload rejects removed routes still referenced by projects and account identity changes.
 

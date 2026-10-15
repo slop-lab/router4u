@@ -38,6 +38,6 @@ export function initializeRuntime(directory) {
     routing: { strategy: 'fill-first', retry: { 'request-retry': 0, 'max-retry-credentials': 1, 'max-retry-interval': 0 } },
     requests: { streaming: { 'bootstrap-retries': 0 } }, observability: { logs: { 'request-log': false, 'error-logs-max-files': 1 }, usage: { 'usage-statistics-enabled': false } },
   });
-  if (!existsSync(configPath)) writePrivateJSON(configPath, { host: '0.0.0.0', port: 9470, data_dir: join(directory, 'data'), accounts: [], routes: [{ id: 'personal', profile: 'codex', enabled: false, models: [], protocols: ['responses'], base_url: 'http://127.0.0.1:8317/v1', key_env: 'ROUTER4U_BACKEND_KEY', management_key_env: 'ROUTER4U_BACKEND_MANAGEMENT_KEY', concurrency: 4 }] });
+  if (!existsSync(configPath)) writePrivateJSON(configPath, { host: '0.0.0.0', port: 9470, data_dir: join(directory, 'data'), transcript_dir: process.env.ROUTER4U_TRANSCRIPT_DIR ?? '/var/lib/router4u-transcripts', accounts: [], routes: [{ id: 'personal', profile: 'codex', enabled: false, models: [], protocols: ['responses'], base_url: 'http://127.0.0.1:8317/v1', key_env: 'ROUTER4U_BACKEND_KEY', management_key_env: 'ROUTER4U_BACKEND_MANAGEMENT_KEY', concurrency: 4 }] });
   return { secrets, configPath, backendPath };
 }

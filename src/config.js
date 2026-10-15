@@ -31,7 +31,7 @@ export function validatePolicy(input) {
 
 export function validateConfig(input) {
   requireValue(input && typeof input === 'object' && !Array.isArray(input), 'Configuration must be an object');
-  requireValue(Object.keys(input).every(key => ['host', 'port', 'data_dir', 'admin_key_env', 'max_request_bytes', 'max_response_bytes', 'archive_max_bytes', 'concurrency', 'daily_requests', 'daily_tokens', 'routes', 'requests_per_minute', 'tokens_per_minute', 'budgets', 'maintenance_interval_ms', 'accounts', 'allow_private_http'].includes(key)), 'Unknown configuration field');
+  requireValue(Object.keys(input).every(key => ['host', 'port', 'data_dir', 'transcript_dir', 'admin_key_env', 'max_request_bytes', 'max_response_bytes', 'archive_max_bytes', 'concurrency', 'daily_requests', 'daily_tokens', 'routes', 'requests_per_minute', 'tokens_per_minute', 'budgets', 'maintenance_interval_ms', 'accounts', 'allow_private_http'].includes(key)), 'Unknown configuration field');
   const config = {
     host: '127.0.0.1', port: 9470, data_dir: '.runtime/data', admin_key_env: 'ROUTER4U_ADMIN_KEY',
     max_request_bytes: 2097152, max_response_bytes: 16777216, archive_max_bytes: 1073741824,
@@ -83,6 +83,9 @@ export function validateConfig(input) {
     requireValue(account && account.route_id === route.id && account.credential_name === route.credential_name, 'Exclusive route must match its account registry binding');
   }
   config.data_dir = resolve(config.data_dir);
+  requireValue(config.transcript_dir === undefined || (typeof config.transcript_dir === 'string' && config.transcript_dir.trim().length > 0), 'transcript_dir must be a nonempty path');
+  config.transcript_dir = resolve(config.transcript_dir ?? resolve(config.data_dir, 'transcripts'));
+  requireValue(config.transcript_dir !== config.data_dir, 'Transcript directory must differ from database directory');
   return config;
 }
 

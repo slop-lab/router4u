@@ -47,8 +47,8 @@ export function createGateway(input, options = {}) {
   const environment = options.environment ?? process.env;
   const adminKey = environment[config.admin_key_env];
   requireValue(typeof adminKey === 'string' && adminKey.length >= 24, 'Set an operator key of at least 24 characters');
-  const store = options.store ?? new Store(config.data_dir, { archiveMaxBytes: config.archive_max_bytes });
-  const restartFields = ['host', 'port', 'data_dir', 'admin_key_env', 'maintenance_interval_ms'];
+  const store = options.store ?? new Store(config.data_dir, { archiveMaxBytes: config.archive_max_bytes, transcriptDirectory: config.transcript_dir });
+  const restartFields = ['host', 'port', 'data_dir', 'transcript_dir', 'admin_key_env', 'maintenance_interval_ms'];
   const saved = store.db.prepare("SELECT data FROM settings WHERE id='web_configuration'").get();
   if (saved) config = validateConfig({ ...JSON.parse(saved.data), ...Object.fromEntries(restartFields.map(key => [key, config[key]])) });
   store.archiveMaxBytes = config.archive_max_bytes;
