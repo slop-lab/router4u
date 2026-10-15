@@ -2,7 +2,7 @@
 
 ## Install on a new computer
 
-The commands below target a Linux x86-64 Docker host and a POSIX shell. Install Git and Docker Engine, start Docker, and make sure your account can run `docker info`. Host Node.js, npm, Go, Docker Compose, a model name, and a provider credential are not needed for this installation. Windows/macOS hosts and ARM64 hardware are not covered by the current build verification; the backend image currently targets Linux amd64.
+The commands below use a POSIX shell and Linux amd64 containers. On Windows x86-64, use Docker Desktop in Linux container mode and the [PowerShell instructions](#windows-powershell). Install Git and Docker, start Docker, and make sure your account can run `docker info`. Host Node.js, npm, Go, a model name, and a provider credential are not needed for installation. macOS hosts and ARM64 hardware are not covered by the current build verification.
 
 Check the destination computer before downloading the source:
 
@@ -94,7 +94,26 @@ docker exec router4u router4u admin-key show
 
 For a complete cold backup, pause admissions, inspect active requests, stop the container, then copy **both** the state and transcript volumes using a temporary container. Keep both processes stopped for the whole copy. The backup includes live credentials and original payloads. Restore into a new volume; start only one installation using those credentials. Do not blindly replay uncertain requests. CLIProxyAPI remains the only OAuth and refresh owner.
 
-Bundled mode currently starts one backend. Different project-to-account eligibility requires the [separate Compose partition topology](compose.md); do not combine differently authorized credential sets into one pool.
+The bundled installation starts one backend. Separate project-to-account eligibility requires custom backend provisioning; no provisioning helper is included. Do not combine differently authorized credential sets into one pool.
+
+## Windows PowerShell
+
+Use Docker Desktop with its Linux container engine. From PowerShell, clone the repository, enter its root, and build the image as above. Create the installation with this single-line command:
+
+```powershell
+docker run -d --name router4u --restart unless-stopped --stop-timeout 30 --read-only --tmpfs /tmp --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 -p 127.0.0.1:9470:9470 -v router4u-data:/var/lib/router4u -v router4u-transcripts:/var/lib/router4u-transcripts router4u:local
+docker inspect --format '{{.State.Status}} / {{.State.Health.Status}}' router4u
+```
+
+Once healthy, run `docker exec router4u router4u admin-key show` and open `http://127.0.0.1:9470/`. Named volumes keep runtime files on the Linux engine's filesystem. Real-provider login and inference require separate verification.
+
+For development, run the built-in offline tests inside Linux rather than running `npm test` directly on Windows. Directory synchronization, POSIX file permissions, and process checks assume Linux. From the repository root:
+
+```powershell
+docker run --rm --network none --read-only --tmpfs /tmp:rw,exec,nosuid,nodev,size=512m --mount "type=bind,src=$($PWD.Path),dst=/workspace,readonly" --workdir /workspace node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df node --test 'test/*.test.js'
+```
+
+The first run may download the pinned image; test execution has no network access. This command runs the built-in suite. The backend and SDK suites additionally need their downloaded prerequisites, as described in the README.
 
 ## Rebuild and restart
 
@@ -130,7 +149,7 @@ Back up both stopped volumes: `router4u-data` holds `secrets.json`, configuratio
 
 ## Multiple account partitions
 
-For separate account eligibility, use the [Compose partition guide](compose.md#add-another-account-or-provider-partition). The bundled supervisor starts one backend and does not create more backend containers from the UI.
+The bundled supervisor starts one backend and does not create additional backend containers. Separate account eligibility requires custom backend provisioning and advanced route configuration. No multi-backend deployment template or provisioning helper is included.
 
 ## Certificate errors during sign-in
 

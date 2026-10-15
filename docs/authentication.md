@@ -35,7 +35,7 @@ For Responses, consume the terminal event: HTTP 200 alone is not success. Failed
 
 ## Multiple accounts
 
-Accounts with different project eligibility use separate backend partitions, each with its own auth directory and credential lifecycle. See [the multiple-account workflow](compose.md#add-another-account-or-provider-partition).
+Accounts with different project eligibility use separate backend partitions, each with its own auth directory and credential lifecycle. The bundled installation provides one backend; separate credential sets require custom backend provisioning and advanced route configuration.
 
 Use a stable account ID and an exclusive route binding when account-specific attribution or capacity limits are needed. Admission verifies the sole enabled credential in that partition. Never copy one rotating credential into multiple running workers. Reauthorization is scoped to the affected partition; a provider outage must not delete unrelated accounts.
 

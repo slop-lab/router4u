@@ -5,8 +5,4 @@ if [ "${1:-}" = start ] || { [ "${1:-}" = admin-key ] && [ "${2:-}" = rotate ]; 
   mkdir -p "$state"
   exec flock --no-fork --nonblock "$state/installation.lock" node /app/src/container.js "$@"
 fi
-if [ "${1:-}" = serve ]; then
-  # Compatibility with the separate-backend Compose installation.
-  exec flock --no-fork --nonblock /state/installation.lock node /app/src/container.js "$@"
-fi
 exec node /app/src/container.js "$@"

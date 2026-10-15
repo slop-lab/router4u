@@ -4,7 +4,7 @@ A shared, personal LLM access service with project identities, durable usage res
 
 Supports native HTTP Responses and Chat Completions. Codex account OAuth and provider API-key connections are supported. All upstream OAuth and refresh remain in CLIProxyAPI. Applications use independent Router4u project keys.
 
-**Status:** initial development. The owner reports successful real-provider use through the pi CLI. Automated offline, browser, SDK, backend-contract, and container checks cover separate behaviors; this is not a production-readiness or universal provider-compatibility claim. See [validation scope](docs/validation.md).
+**Status:** initial development. Automated tests use fake providers and inert credentials; they do not verify live-provider compatibility. See [testing and verification scope](docs/validation.md).
 
 ## Personal use and provider terms
 
@@ -12,7 +12,7 @@ Use ChatGPT/Codex account connections only for yourself and your own application
 
 ## Run with Docker
 
-On a Linux x86-64 computer with Git and a working Docker Engine:
+On a Linux x86-64 computer with Git and a working Docker Engine (Windows Docker Desktop users can follow the [PowerShell instructions](docs/docker.md#windows-powershell)):
 
 ```sh
 git clone https://github.com/slop-lab/router4u.git
@@ -48,7 +48,6 @@ The initial connection is disabled and has no model allowlist. No inference is a
 
 Follow [Docker installation and account operations](docs/docker.md) for persistence, callback submission, project keys, and complete backups. The container supervises Gateway and CLIProxyAPI; failure of either ends the container so Docker can restart it. Operational state and credentials persist in `router4u-data`; sensitive JSONL records persist separately in `router4u-transcripts`. Runtime diagnostics use Docker logging with bounded rotation.
 
-Use the [Compose partition topology](docs/compose.md) when projects need separate backend account sets. The default single-container installation runs one backend.
 
 Runtime initialization retains existing configuration and keys. Default application keys cannot export transcripts; issue an explicit `exchange:export` principal when needed.
 
@@ -108,8 +107,6 @@ For an enforced network-free test run after downloads:
 ```sh
 sh scripts/test-offline.sh
 docker build -t router4u:local .
-docker build -f deploy/backend.Dockerfile -t router4u-backend:8.0.28 .tools
-npm run test:deployment
 npm run test:container
 npm run benchmark
 ```
@@ -123,9 +120,8 @@ The Docker test container has no external network, a read-only repository, and w
 - [API and policy reference](docs/api.md)
 - [pi and Vercel AI SDK examples](docs/clients.md)
 - [Recovery, backups, retention, and deployment](docs/operations.md)
-- [Backend capability evidence and acceptance criteria](docs/validation.md)
+- [Testing and verification scope](docs/validation.md)
 - [Architecture and implementation](docs/implementation.md)
-- [Development status and remaining work](docs/completion-plan.md)
 
 Router4u records the client-facing application bodies, not application conversation history or backend-translated provider traffic. Full capture preserves sensitive content without silent redaction. Exchange readers can access secrets present in their authorized records. There is no transcript HTML renderer or automatic replay.
 

@@ -2,7 +2,7 @@
 
 Open `http://127.0.0.1:9470/` after starting Router4u. The web interface is included in the gateway image; no frontend build, CDN, or separate web server is needed.
 
-Retrieve the administrator key with `docker exec router4u router4u admin-key show`. For Compose, read `ROUTER4U_ADMIN_KEY` from `.runtime/secrets.json`. For the offline demo, use the operator key in `.runtime/demo.env`. Do not paste this key into project applications: issue a project key in the UI instead.
+Retrieve the administrator key with `docker exec router4u router4u admin-key show`. For the offline demo, use the operator key in `.runtime/demo.env`. Do not paste this key into project applications: issue a project key in the UI instead.
 
 ## Everyday workflow
 
@@ -35,14 +35,14 @@ Use localhost or HTTPS for administration. HTTPS-origin login adds Secure to the
 
 ## Current limits and release scope
 
-Codex sign-in is delegated to CLIProxyAPI from the browser. The owner reports successful pi CLI use with a real provider; see [validation evidence](validation.md). Automated browser tests cover pending, failed, and completed sign-in using a fake backend; they do not verify real token exchange, inference, or refresh.
+Codex sign-in is delegated to CLIProxyAPI from the browser. Automated browser tests cover pending, failed, and completed sign-in using a fake backend; they do not verify real token exchange, inference, or refresh.
 
-Multiple accounts are a design requirement. The current UI can log in to existing partitions and edit project route authorization, but it does not create backend containers or provide a complete account-add wizard. Prepare isolated accounts with [the partition workflow](compose.md#add-another-account-or-provider-partition); register exclusive account metadata in Settings when exact account eligibility is needed.
+The current UI can log in to existing partitions and edit project route authorization, but it does not create backend containers or provide a complete account-add wizard. The bundled installation supports one backend credential set. Separate account eligibility requires custom backend provisioning and advanced configuration; no provisioning helper is included.
 
-The default installation bundles the gateway and CLIProxyAPI in one container. Compose is available for separate backend partitions. Docker Hub publication and a `curl ... | sh` installer are deferred; no public image name or working installer URL is claimed. Use `restart: unless-stopped` for long-running containers.
+The default installation bundles the gateway and CLIProxyAPI in one container. Docker Hub publication and a `curl ... | sh` installer are deferred; no public image name or working installer URL is claimed. Use `--restart unless-stopped` for long-running containers.
 
 Offline browser tests use inert keys and a fake provider. They do not verify live sign-in, real account eligibility, provider billing, or refresh behavior.
 
 ## Development verification
 
-After `npm ci`, run `sh scripts/test-offline.sh` and `npm run test:browser`. The browser test prepares pinned images, then runs the UI and fake provider in a network-isolated container. To validate production packaging and crash recovery, build `router4u:local` and run `npm run test:container`. For Compose, also build the separate backend image and run `npm run test:deployment`.
+After `npm ci`, run `sh scripts/test-offline.sh` and `npm run test:browser`. The browser test prepares pinned images, then runs the UI and fake provider in a network-isolated container. To validate production packaging and crash recovery, build `router4u:local` and run `npm run test:container`.

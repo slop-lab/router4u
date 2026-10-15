@@ -12,7 +12,6 @@
     "test:clients": "node --test test/clients.integration.js",
     "demo": "node scripts/demo.js",
     "backend:install": "node scripts/install-backend.js",
-    "test:deployment": "node scripts/test-deployment.js",
     "test:container": "node scripts/test-container.js",
     "benchmark": "node scripts/benchmark.js",
     "test:browser": "sh scripts/test-browser.sh"

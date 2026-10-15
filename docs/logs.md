@@ -6,13 +6,13 @@ Request history, original request/response bodies, audit entries, and notificati
 
 Runtime diagnostics are stdout/stderr, available through `docker logs router4u`. Docker's `json-file` driver wraps output in JSON records; the documented deployment rotates these files at 10 MiB with three files retained. Docker manages their host location. They are not stored in the transcript volume or in `data/logs`. Upstream diagnostic output is also treated as private and is not promised to be token-free.
 
-Transcripts, request history, audit actions, and event notifications are sensitive application records with a separate storage and backup lifecycle. The gateway configuration's `transcript_dir` selects their directory and requires a restart to change. Bundled mode defaults to `/var/lib/router4u-transcripts`; mount a separate named volume there. Compose mounts `.runtime/transcripts` at `/transcripts`. Local test embeddings default to `data_dir/transcripts`.
+Transcripts, request history, audit actions, and event notifications are sensitive application records with a separate storage and backup lifecycle. The gateway configuration's `transcript_dir` selects their directory and requires a restart to change. Bundled mode defaults to `/var/lib/router4u-transcripts`; mount a separate named volume there. Local test embeddings default to `data_dir/transcripts`.
 
 Storage separation lets you set different backup, retention, and access policies; the gateway can still read both volumes. Do not mount either volume into consuming applications.
 
 ## Location and format
 
-Bundled installations store logs at `/var/lib/router4u-transcripts` in the separate `router4u-transcripts` volume. Compose stores them under `.runtime/transcripts` on the host. Files are private (mode 0600), directories are mode 0700.
+Bundled installations store logs at `/var/lib/router4u-transcripts` in the separate `router4u-transcripts` volume. Files are private (mode 0600), directories are mode 0700.
 
 | File | Records |
 |---|---|

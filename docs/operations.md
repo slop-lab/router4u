@@ -1,10 +1,10 @@
 # Deployment and operations
 
-Start with the [single-container Docker guide](docker.md). Use [Compose partitions](compose.md) when projects need different backend credential sets.
+Start with the [single-container Docker guide](docker.md).
 
 ## Supported installation
 
-Run one Node.js 24 gateway and one or more dedicated CLIProxyAPI v8.0.28 partitions on a trusted single-user host. SQLite state belongs to the shared installation, outside project container lifecycles. Do not place the database on NFS or share it among gateway replicas. The service lock prevents normal accidental startup of a second CLI process against the same state directory.
+Run the bundled Node.js 24 gateway and CLIProxyAPI v8.0.28 backend on a trusted single-user host. SQLite state belongs to the shared installation, outside project container lifecycles. Do not place the database on NFS or share it among gateway replicas. The service lock prevents normal accidental startup of a second CLI process against the same state directory.
 
 Runtime dependencies are Node built-ins. The optional development dependencies are only for real SDK compatibility tests. The no-plugin backend binary is a pinned, checksummed download. Native untrusted plugins are not part of the deployment.
 
@@ -14,9 +14,9 @@ Use `docker exec router4u router4u doctor --route personal` to inspect the backe
 
 The bundled backend binds to container loopback. The gateway listens on port 9470 inside the container; the documented Docker port mapping restricts host access to loopback. For separate project containers, provide a reachable gateway address using your runtime's private networking and explicit discovery configuration. Give each application a separate project key. Do not mount `.runtime`, the backend auth directory, or management credentials into project containers.
 
-Only the gateway should reach backend inference and management. In the separate Compose topology, give the gateway both an application network and an infrastructure network; attach CLIProxyAPI only to the infrastructure network. Do not publish its management port. Bind gateway ingress to the intended network and set `allow_private_http:true` only for an explicitly trusted private backend connection. Use authenticated TLS for traffic crossing an untrusted network. A host administrator remains outside this isolation guarantee.
+Only the gateway should reach backend inference and management. Do not publish its management port. Bind gateway ingress to the intended network and set `allow_private_http:true` only for an explicitly trusted private backend connection. Use authenticated TLS for traffic crossing an untrusted network. A host administrator remains outside this isolation guarantee.
 
-The image contains the gateway, pinned backend, CA certificates, and process supervisor without development dependencies. Its state volume at `/var/lib/router4u` holds private keys, configuration, OAuth credentials, and SQLite data; `/var/lib/router4u-transcripts` is a separate volume for sensitive JSONL records. Bind mounts must be writable by the container user (UID/GID 1000 by default). In Compose, configuration is mounted at `/config` and gateway data at `/state`; do not mix these layouts.
+The image contains the gateway, pinned backend, CA certificates, and process supervisor without development dependencies. Its state volume at `/var/lib/router4u` holds private keys, configuration, OAuth credentials, and SQLite data; `/var/lib/router4u-transcripts` is a separate volume for sensitive JSONL records. Bind mounts must be writable by the container user (UID/GID 1000 by default).
 
 ## Route and account isolation
 
@@ -55,7 +55,7 @@ Revoking a principal or disabling a project affects new work. To stop existing w
 
 For bundled mode, pause admissions, inspect active work, stop the container, and copy both the state and transcript named volumes. Restore into a fresh volume with the same ownership. This preserves `secrets.json`, gateway/backend configuration, OAuth files, SQLite data, and JSONL logs together. Do not copy a live SQLite database without a supported snapshot operation or mix restored files with an old WAL. Keep exactly one active refresh owner.
 
-The separate Compose topology has explicit `backup-installation` and `restore-installation` commands with integrity checks; see [the Compose backup procedure](compose.md#back-up-and-restore). The gateway-state `backup` command (SQLite and JSONL) does not include backend credentials. Synthetic backup tests cannot prove that restored rotating provider tokens will remain accepted.
+The gateway-state `backup` command (SQLite and JSONL) does not include backend credentials. For older development state using `.env`, `node scripts/migrate-secrets.js DIRECTORY` preserves existing keys in private `secrets.json`; review configuration paths before reuse. Synthetic backup tests cannot prove that restored rotating provider tokens will remain accepted.
 
 After recovery, inspect usage, unknown reservations, and authorized exchange records before resuming admissions. Never replay ambiguous work automatically.
 

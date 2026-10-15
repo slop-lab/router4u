@@ -30,8 +30,6 @@ On Codex routes, use the route’s advertised protocols and verify model-specifi
 
 ## pi CLI
 
-The owner reports successful real-provider use through pi. Exact client/model versions and multi-turn tool coverage were not recorded; this is separate from the pinned SDK tests below.
-
 Add a `router4u` entry to `providers` in `~/.pi/agent/models.json`, preserving existing providers. Replace `MODEL_ID` with a model allowed by your Router4u project:
 
 ```json
