@@ -12,15 +12,28 @@ Use ChatGPT/Codex account connections only for yourself and your own application
 
 ## Run with Docker
 
+On a Linux x86-64 computer with Git and a working Docker Engine:
+
 ```sh
+git clone https://github.com/slop-lab/router4u.git
+cd router4u
 docker build -t router4u:local .
-docker run -d --name router4u --restart unless-stopped \
+docker run -d --name router4u --restart unless-stopped --stop-timeout 30 \
+  --read-only --tmpfs /tmp \
   --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
   -p 127.0.0.1:9470:9470 \
   -v router4u-data:/var/lib/router4u \
   -v router4u-transcripts:/var/lib/router4u-transcripts router4u:local
+docker inspect --format '{{.State.Status}} / {{.State.Health.Status}}' router4u
+```
+
+Wait for `running / healthy`, then retrieve the administrator key:
+
+```sh
 docker exec router4u router4u admin-key show
 ```
+
+For a remote server, a machine without the source checkout, or installation troubleshooting, follow [the new-computer installation guide](docs/docker.md#install-on-a-new-computer). If you already have the source, start from its repository root instead of cloning again.
 
 The Linux amd64 image includes checksum-pinned CLIProxyAPI. No host setup script, `.env`, model, or provider credential is needed. Initial configuration and private keys are generated in the persistent volume. Open **http://127.0.0.1:9470/** and sign in with the administrator key from the explicit command above. Do not share its output.
 
