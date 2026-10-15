@@ -120,6 +120,6 @@ npm run test:browser
 
 The browser test prepares pinned Node and Playwright images, then runs with `--network none`, a read-only repository, and temporary browser state. It starts with a disabled connection and no models, discovers/selects a model, enables the connection, creates a project and key, sends a fake-provider request, and checks history, settings, audit, responsive layout, and logout.
 
-The current storage implementation initializes empty databases and reopens only its exact supported schema. Tests verify unsupported schemas are left unchanged and principals with missing scope metadata cannot authenticate. No schema migration or compatibility-default permissions are implemented.
+The current storage implementation initializes schema 3 and reopens only its exact supported schema. An explicit stopped-installation command converts schema 2 to JSONL; see [log conversion](logs.md#convert-an-existing-schema-2-installation). Tests verify unsupported schemas are left unchanged and principals with missing scope metadata cannot authenticate. Normal startup never converts a database automatically; missing principal scopes do not inherit permissions.
 
 A complete browser-only account provisioning wizard is still missing. Backend partitions can be provisioned through deployment scripts, then connected in the UI. New installations and account/model combinations still need their own live checks. The reported pi success does not verify token refresh, provider quota, or every application workflow.

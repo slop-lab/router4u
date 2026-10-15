@@ -145,7 +145,7 @@ Stop every backend refresh owner before a complete installation backup. With gen
 ./router4u run --rm --no-deps maintenance backup-installation --file /backups/checkpoint --config /config/router4u.json --backend-config /config/cliproxyapi.yaml --auth-dir /auth --env-file /config/secrets.json
 ```
 
-The bundle contains the SQLite ledger/reservations/archive/audit/outbox, gateway and backend configuration, environment keys, auth directory, generated partitions, and Compose settings. Files have integrity hashes. The bundle contains live credentials and original payloads. Protect it like the running installation and enforce a separate backup retention policy.
+The bundle contains the SQLite operational state and JSONL payload/history/audit/event logs, gateway and backend configuration, environment keys, auth directory, generated partitions, and Compose settings. Files have integrity hashes. The bundle contains live credentials and original payloads. Protect it like the running installation and enforce a separate backup retention policy.
 
 Restore into a new staging directory, never over an existing WAL or auth directory:
 

@@ -1,6 +1,6 @@
 # Router4u
 
-A shared, personal LLM access service with project identities, durable usage reservations, original exchange recording, and CLIProxyAPI-managed upstream accounts.
+A shared, personal LLM access service with project identities, durable usage reservations, JSONL exchange logging, and CLIProxyAPI-managed upstream accounts.
 
 Supports native HTTP Responses and Chat Completions. Codex account OAuth and provider API-key connections are supported. All upstream OAuth and refresh remain in CLIProxyAPI. Applications use independent Router4u project keys.
 
@@ -104,6 +104,7 @@ The Docker test container has no external network, a read-only repository, and w
 ## Interfaces and operations
 
 - [Docker setup, additional accounts, and reload](docs/docker.md)
+- [JSONL logs and on-demand analysis](docs/logs.md)
 - [API and policy reference](docs/api.md)
 - [pi and Vercel AI SDK examples](docs/clients.md)
 - [Recovery, backups, retention, and deployment](docs/operations.md)

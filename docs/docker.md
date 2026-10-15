@@ -14,7 +14,7 @@ docker exec router4u router4u admin-key show
 
 First start generates private keys and a disabled `personal` connection. Sign in at `http://127.0.0.1:9470/` using the explicitly retrieved administrator key, connect the account, select models, and enable routing. Keys are never printed in ordinary startup logs. An optional `ROUTER4U_ADMIN_KEY` environment value is accepted on first initialization and persisted; a conflicting value on later startup is rejected.
 
-The volume stores `secrets.json`, gateway/backend configuration, OAuth credentials, and `data/` containing the SQLite ledger and payload records. Internal backend keys are implementation details, not user configuration. Never commit or share this volume. Named volumes avoid host UID/GID setup; bind mounts must be writable by the container user (UID/GID 1000 by default). Do not use an anonymous volume or delete the named volume when replacing the container.
+The volume stores `secrets.json`, gateway/backend configuration, OAuth credentials, and `data/` containing the SQLite operational state and JSONL logs. Internal backend keys are implementation details, not user configuration. Never commit or share this volume. Named volumes avoid host UID/GID setup; bind mounts must be writable by the container user (UID/GID 1000 by default). Do not use an anonymous volume or delete the named volume when replacing the container.
 
 Gateway listens on `0.0.0.0:9470` inside the container. Set the **host** bind with Docker `-p`, not a container environment variable:
 
@@ -72,7 +72,7 @@ For API-key providers, edit the private CLIProxyAPI configuration in the volume 
 
 ## Backup and recovery
 
-Back up the complete stopped volume, including `secrets.json`, both configuration files, `auth/`, and `data/`. Restore to a fresh volume with the same ownership and start exactly one installation. The [operations guide](operations.md) explains uncertain requests and audited corrections. Database-only backups do not preserve upstream credentials or the administrator key.
+Back up the complete stopped volume, including `secrets.json`, both configuration files, `auth/`, and `data/`. Restore to a fresh volume with the same ownership and start exactly one installation. The [operations guide](operations.md) explains uncertain requests and audited corrections. A SQLite-only copy omits JSONL logs, upstream credentials, and the administrator key. See [JSONL storage and conversion](logs.md).
 
 ## Multiple account partitions
 

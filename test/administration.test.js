@@ -133,7 +133,7 @@ test('Full installation backup restores inert credentials, payloads, ledger and 
 
 test('Unsupported schemas are rejected without modifying their contents', async context => {
   const setup = await fixture(context);
-  for (const version of [0, 1, 999]) {
+  for (const version of [0, 1, 2, 999]) {
     const dir = join(setup.directory, `unsupported-${version}`); mkdirSync(dir);
     const path = join(dir, 'router4u.sqlite');
     let db = new DatabaseSync(path); db.exec(`CREATE TABLE sentinel(value TEXT); INSERT INTO sentinel VALUES('preserved'); PRAGMA user_version=${version}`); db.close();

@@ -37,11 +37,19 @@ export const operations = {
     this.db.prepare('UPDATE accounts SET data=? WHERE id=?').run(JSON.stringify(next), id);
     return next;
   },
+  logHistory(projectId) {
+    const records = [];
+    for (const id of this.logs.requestIDs()) {
+      const logged = this.logs.request(id);
+      if (logged?.project_id === projectId) { const record = this.request(id); if (record) records.push(record); }
+    }
+    return records;
+  },
   history(projectId, { cursor = 0, limit = 100, from = 0, to = this.clock() } = {}) {
     requireValue([cursor, limit, from, to].every(Number.isSafeInteger) && cursor >= 0 && limit >= 1 && limit <= 200 && from >= 0 && to >= from, 'Invalid history query');
-    const rows = this.db.prepare('SELECT rowid AS cursor,data FROM requests WHERE project_id=? AND rowid>? AND created>=? AND created<=? ORDER BY rowid LIMIT ?').all(projectId, cursor, from, to, limit + 1);
-    const more = rows.length > limit; const page = rows.slice(0, limit);
-    return { items: page.map(row => ({ cursor: row.cursor, ...JSON.parse(row.data) })), next_cursor: more ? page.at(-1).cursor : null, observed_at: this.clock(), collection_gap: 'Backend internal attempts are not observable' };
+    const rows = this.logHistory(projectId).filter(row => row.cursor > cursor && row.created >= from && row.created <= to).sort((a, b) => a.cursor - b.cursor);
+    const page = rows.slice(0, limit);
+    return { items: page, next_cursor: rows.length > limit ? page.at(-1).cursor : null, observed_at: this.clock(), collection_gap: 'Backend internal attempts are not observable' };
   },
   usageHistory(projectId, from = 0, to = this.clock()) {
     requireValue(Number.isSafeInteger(from) && Number.isSafeInteger(to) && from >= 0 && to >= from, 'Invalid usage interval');
@@ -133,7 +141,8 @@ export const operations = {
       this.ledger(randomUUID(), record, 'usage_correction', tokens - previous, observation);
       this.audit('operator', 'usage.observe', id, observation);
       this.update(id, { accounting: 'settled', usage: observation });
-      this.db.prepare('INSERT INTO outbox(created,request_id,event) VALUES(?,?,?)').run(this.clock(), id, JSON.stringify({ type: 'usage.corrected', observation }));
+      this.event(id, { type: 'usage.corrected', observation });
+      this.writeLog(() => this.activeRecords.delete(id));
       return observation;
     });
   },
@@ -143,12 +152,23 @@ export const operations = {
     for (const row of rows) this.deleteCapture(row.id, true);
     return { expired: rows.length, observed_at: this.clock() };
   },
+  logLatency() {
+    const samples = { gateway_lifetime_ms: [0, 0], backend_first_byte_ms: [0, 0], capture_ms: [0, 0] };
+    for (const id of this.logs.requestIDs()) {
+      const record = this.logs.request(id);
+      if (!record?.finished_at) continue;
+      for (const [key, value] of Object.entries({ gateway_lifetime_ms: record.finished_at - record.created, backend_first_byte_ms: record.first_byte_at - record.dispatched_at, capture_ms: record.capture_ms })) {
+        if (Number.isFinite(value)) { samples[key][0] += value; samples[key][1]++; }
+      }
+    }
+    return Object.fromEntries(Object.entries(samples).map(([key, [sum, count]]) => [key, count ? sum / count : null]));
+  },
   metrics() {
     const totals = this.db.prepare('SELECT COUNT(*) AS requests,COALESCE(SUM(tokens),0) AS settled_tokens,COALESCE(SUM(reserved),0) AS reserved_tokens,SUM(active) AS active FROM requests').get();
     const archive = this.db.prepare('SELECT bytes FROM archive_usage WHERE id=1').get().bytes;
-    return { ...totals, archive_bytes: archive, archive_capacity: this.archiveMaxBytes, uncertain_occupancy: this.db.prepare("SELECT COUNT(*) AS count FROM requests WHERE json_extract(data,'$.occupancy')='uncertain'").get().count,
+    return { ...totals, archive_bytes: archive, archive_capacity: this.archiveMaxBytes, analysis_log_failures: this.logFailures, uncertain_occupancy: this.db.prepare("SELECT COUNT(*) AS count FROM requests WHERE json_extract(data,'$.occupancy')='uncertain'").get().count,
       unknown_usage: this.db.prepare('SELECT COUNT(*) AS count FROM requests WHERE active=0 AND tokens IS NULL').get().count,
-      latency: this.db.prepare("SELECT AVG(json_extract(data,'$.finished_at')-created) AS gateway_lifetime_ms,AVG(json_extract(data,'$.first_byte_at')-json_extract(data,'$.dispatched_at')) AS backend_first_byte_ms,AVG(json_extract(data,'$.capture_ms')) AS capture_ms FROM requests WHERE active=0").get(),
+      latency: this.logLatency(),
       observed_at: this.clock() };
   },
 };

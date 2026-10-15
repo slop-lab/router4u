@@ -3,6 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { ServiceError, requireValue } from './errors.js';
+import { JsonlLogs } from './jsonl.js';
 import { operations } from './store-operations.js';
 import { validatePolicy, periodFor, validateScopes, DEFAULT_SCOPES } from './config.js';
 
@@ -16,8 +17,13 @@ export class Store {
     this.db = new DatabaseSync(this.path);
     const version = this.db.prepare('PRAGMA user_version').get().user_version;
     const hasTables = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").get();
-    if (version !== 2 && (version !== 0 || hasTables)) { this.db.close(); throw new Error('Unsupported database schema; automatic conversion is not available'); }
+    if (version !== 3 && (version !== 0 || hasTables)) { this.db.close(); throw new Error('Unsupported database schema; automatic conversion is not available'); }
     chmodSync(this.path, 0o600);
+    this.logs = new JsonlLogs(join(directory, 'logs'));
+    this.pendingLogs = null;
+    this.activeRecords = new Map();
+    this.captureDetails = new Map();
+    this.logFailures = 0;
     this.clock = clock;
     this.archiveMaxBytes = archiveMaxBytes;
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000');
@@ -34,11 +40,8 @@ export class Store {
       CREATE INDEX requests_occupancy ON requests(json_extract(data,'$.occupancy'));
       CREATE TABLE ledger(id TEXT PRIMARY KEY, request_id TEXT, project_id TEXT NOT NULL, kind TEXT NOT NULL, amount INTEGER NOT NULL, created INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE TABLE captures(request_id TEXT PRIMARY KEY REFERENCES requests(id), data TEXT NOT NULL);
-      CREATE TABLE chunks(request_id TEXT NOT NULL REFERENCES captures(request_id), direction TEXT NOT NULL, sequence INTEGER NOT NULL, payload BLOB NOT NULL, hash TEXT NOT NULL, created INTEGER NOT NULL, PRIMARY KEY(request_id,direction,sequence));
       CREATE TABLE archive_usage(id INTEGER PRIMARY KEY CHECK(id=1), bytes INTEGER NOT NULL);
       INSERT OR IGNORE INTO archive_usage VALUES(1,0);
-      CREATE TABLE audit(sequence INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL, actor TEXT NOT NULL, operation TEXT NOT NULL, target TEXT NOT NULL, data TEXT NOT NULL);
-      CREATE TABLE outbox(sequence INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL, request_id TEXT NOT NULL, event TEXT NOT NULL);
       CREATE TABLE settings(id TEXT PRIMARY KEY, data TEXT NOT NULL);
       CREATE TABLE principal_scopes(principal_id TEXT PRIMARY KEY REFERENCES principals(id), data TEXT NOT NULL);
       CREATE TABLE configuration_revisions(revision TEXT PRIMARY KEY, created INTEGER NOT NULL, data TEXT NOT NULL);
@@ -47,17 +50,46 @@ export class Store {
       CREATE TABLE budget_definitions(scope TEXT NOT NULL,id TEXT NOT NULL,data TEXT NOT NULL,PRIMARY KEY(scope,id));
       CREATE TABLE budget_bookings(request_id TEXT NOT NULL,scope TEXT NOT NULL,budget_id TEXT NOT NULL,period TEXT NOT NULL,created INTEGER NOT NULL,resource TEXT NOT NULL,reserved INTEGER NOT NULL,amount INTEGER,PRIMARY KEY(request_id,scope,budget_id));
       CREATE INDEX budgets_scope ON budget_bookings(scope,budget_id,period,created);
-      PRAGMA user_version=2; COMMIT;`);
+      PRAGMA user_version=3; COMMIT;`);
+    for (const row of this.db.prepare('SELECT request_id,data FROM captures').all()) {
+      const manifest = decode(row);
+      if (!this.logs.reconcileExchange(row.request_id, manifest.chunks)) {
+        this.captureState(row.request_id, 'partial');
+      }
+    }
   }
 
   close() { this.db.close(); }
   transaction(work) {
     this.db.exec('BEGIN IMMEDIATE');
-    try { const result = work(); this.db.exec('COMMIT'); return result; }
-    catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    this.pendingLogs = [];
+    this.rollbackFiles = [];
+    const previous = new Map(this.activeRecords);
+    const previousDetails = new Map(this.captureDetails);
+    let result, logs;
+    try { result = work(); this.db.exec('COMMIT'); logs = this.pendingLogs; }
+    catch (error) { this.db.exec('ROLLBACK'); for (const undo of this.rollbackFiles) { try { undo(); } catch { this.logFailures++; } } this.activeRecords = previous; this.captureDetails = previousDetails; throw error; }
+    finally { this.pendingLogs = null; this.rollbackFiles = null; }
+    // Accounting commits independently of analysis logs. Log failures never replay work.
+    for (const write of logs) this.writeLog(write);
+    return result;
+  }
+  writeLog(write) {
+    if (this.pendingLogs) { this.pendingLogs.push(write); return; }
+    try { write(); }
+    catch { this.logFailures++; process.stderr.write('JSONL analysis log write failed; operational state remains committed\n'); }
+  }
+  operational(record) {
+    const keys = ['id', 'principal_id', 'project_id', 'period', 'service_period', 'created', 'policy_revision', 'policy', 'service_limits', 'route', 'protocol', 'execution', 'occupancy', 'accounting', 'usage', 'capture', 'dispatched_at', 'finished_at'];
+    return Object.fromEntries(keys.filter(key => record[key] !== undefined).map(key => [key, record[key]]));
   }
   audit(actor, operation, target, data = {}) {
-    this.db.prepare('INSERT INTO audit(created,actor,operation,target,data) VALUES(?,?,?,?,?)').run(this.clock(), actor, operation, target, JSON.stringify(data));
+    const row = { created: this.clock(), actor, operation, target, data: JSON.stringify(data) };
+    this.writeLog(() => this.logs.event('audit', row));
+  }
+  event(id, event) {
+    const row = { created: this.clock(), request_id: id, event: JSON.stringify(event) };
+    this.writeLog(() => this.logs.event('events', row));
   }
   project(id) { return decode(this.db.prepare('SELECT data FROM projects WHERE id=?').get(id)); }
   projects() { return this.db.prepare('SELECT data FROM projects ORDER BY id').all().map(decode); }
@@ -156,7 +188,10 @@ export class Store {
         occupancy: 'local', capture_ms: 0, protocol, created: now, admission: 'admitted', execution: 'pending', delivery: 'not_started', accounting: 'reserved',
         capture: policy.recording === 'metadata' ? 'disabled_by_policy' : 'pending', attempt_id: randomUUID(),
         attempt_visibility: 'request_only', usage: null, error: null, cancellation_requested: false };
-      this.db.prepare('INSERT INTO requests VALUES(?,?,?,?,?,1,?,NULL,?)').run(id, project.id, period, servicePeriod, now, reservation, JSON.stringify(record));
+      this.db.prepare('INSERT INTO requests VALUES(?,?,?,?,?,1,?,NULL,?)').run(id, project.id, period, servicePeriod, now, reservation, JSON.stringify(this.operational(record)));
+      record.cursor = Number(this.db.prepare('SELECT rowid FROM requests WHERE id=?').get(id).rowid);
+      this.activeRecords.set(id, record);
+      this.writeLog(() => this.logs.append(`requests/${id}`, { type: 'request', request: record }));
       this.db.prepare('INSERT INTO captures VALUES(?,?)').run(id, JSON.stringify({ request_id: id, boundary: 'client_application_body',
         excluded: ['authentication_headers', 'upstream_translation', 'remote_referenced_bytes', 'network_packets'],
         expires_at: policy.retention_days ? now + policy.retention_days * 86400000 : null, recording: policy.recording, state: record.capture, bytes: 0, chunks: 0, response_status: null, content_type: null }));
@@ -168,16 +203,27 @@ export class Store {
   ledger(id, record, kind, amount, data = {}) {
     this.db.prepare('INSERT INTO ledger VALUES(?,?,?,?,?,?,?)').run(id, record.id, record.project_id, kind, amount, this.clock(), JSON.stringify(data));
   }
-  request(id) { return decode(this.db.prepare('SELECT data FROM requests WHERE id=?').get(id)); }
+  request(id) {
+    const row = this.db.prepare('SELECT data,active FROM requests WHERE id=?').get(id);
+    if (!row) return null;
+    const operational = decode(row);
+    const logged = this.activeRecords.get(id) ?? this.logs.request(id);
+    const record = { ...logged, ...operational, ...(logged ? {} : { history_unavailable: true }) };
+    if (row.active) this.activeRecords.set(id, record);
+    return record;
+  }
   update(id, patch) {
-    const record = this.request(id);
+    let record = this.request(id);
     requireValue(record, 'Unknown request');
-    Object.assign(record, patch);
-    this.db.prepare('UPDATE requests SET data=? WHERE id=?').run(JSON.stringify(record), id);
+    record = { ...record, ...patch };
+    this.db.prepare('UPDATE requests SET data=? WHERE id=?').run(JSON.stringify(this.operational(record)), id);
+    if (this.db.prepare('SELECT active FROM requests WHERE id=?').get(id).active) this.activeRecords.set(id, record);
+    else this.activeRecords.delete(id);
+    this.writeLog(() => this.logs.append(`requests/${id}`, { type: 'update', patch }));
     return record;
   }
   requests(projectId, after = 0) {
-    return this.db.prepare('SELECT data FROM requests WHERE project_id=? AND created>=? ORDER BY created DESC LIMIT 200').all(projectId, after).map(decode);
+    return this.logHistory(projectId).filter(record => record.created >= after).sort((a, b) => b.created - a.created).slice(0, 200);
   }
   dispatch(id, model) {
     return this.transaction(() => {
@@ -198,7 +244,8 @@ export class Store {
       this.settleBudgets(id, tokens);
       if (observation) this.db.prepare('INSERT OR IGNORE INTO usage_observations VALUES(?,?,?,?)').run(observation.source ?? 'backend_response', id, id, JSON.stringify(record.usage));
       this.ledger(`${id}:settle`, record, tokens === null ? 'unknown_usage' : 'settlement', tokens ?? 0, { unknown: tokens === null, observation });
-      this.db.prepare('INSERT INTO outbox(created,request_id,event) VALUES(?,?,?)').run(this.clock(), id, JSON.stringify({ type: 'request.finished', request: record }));
+      this.event(id, { type: 'request.finished', request: record });
+      this.writeLog(() => { this.activeRecords.delete(id); this.captureDetails.delete(id); });
       return record;
     });
   }
@@ -212,7 +259,8 @@ export class Store {
       this.ledger(randomUUID(), record, 'operator_adjustment', tokens, { reason });
       this.audit('operator', 'usage.resolve', id, { tokens, reason });
       const updated = this.update(id, { accounting: 'settled', usage: { total: tokens, source: 'operator_adjustment', scope: 'request', completeness: 'operator_resolved', observed_at: this.clock(), reason } });
-      this.db.prepare('INSERT INTO outbox(created,request_id,event) VALUES(?,?,?)').run(this.clock(), id, JSON.stringify({ type: 'usage.resolved', request: updated }));
+      this.event(id, { type: 'usage.resolved', request: updated });
+      this.writeLog(() => { this.activeRecords.delete(id); this.captureDetails.delete(id); });
       return updated;
     });
   }
@@ -226,11 +274,24 @@ export class Store {
     }
     return unfinished.length;
   }
-  manifest(id) { return decode(this.db.prepare('SELECT data FROM captures WHERE request_id=?').get(id)); }
+  captureControl(manifest) {
+    return Object.fromEntries(['request_id', 'boundary', 'excluded', 'expires_at', 'recording', 'state', 'bytes', 'chunks', 'sequences'].filter(key => manifest[key] !== undefined).map(key => [key, manifest[key]]));
+  }
+  manifest(id) {
+    const control = decode(this.db.prepare('SELECT data FROM captures WHERE request_id=?').get(id));
+    if (!control) return null;
+    let details = this.captureDetails.get(id);
+    if (!details) { details = {}; for (const row of this.logs.read(`requests/${id}`)) if (row.type === 'manifest') Object.assign(details, row.patch); }
+    if (this.activeRecords.has(id)) this.captureDetails.set(id, details);
+    return { ...details, ...control };
+  }
   captureState(id, state, patch = {}) {
     const manifest = { ...this.manifest(id), ...patch, state };
-    this.db.prepare('UPDATE captures SET data=? WHERE request_id=?').run(JSON.stringify(manifest), id);
+    this.db.prepare('UPDATE captures SET data=? WHERE request_id=?').run(JSON.stringify(this.captureControl(manifest)), id);
+    this.captureDetails.set(id, { ...manifest });
+    this.writeLog(() => this.logs.append(`requests/${id}`, { type: 'manifest', patch: manifest }));
     this.update(id, { capture: state });
+    if (!this.db.prepare('SELECT active FROM requests WHERE id=?').get(id).active) this.writeLog(() => this.captureDetails.delete(id));
     return manifest;
   }
   append(id, direction, payload) {
@@ -244,21 +305,27 @@ export class Store {
         const projectBytes = this.db.prepare("SELECT COALESCE(SUM(json_extract(c.data,'$.bytes')),0) AS bytes FROM captures c JOIN requests r ON r.id=c.request_id WHERE r.project_id=?").get(record.project_id).bytes;
         if (projectBytes + payload.length > record.policy.archive_max_bytes) throw new ServiceError(507, 'recording_failed', 'Project archive capacity exhausted');
       }
-      const sequence = this.db.prepare('SELECT COUNT(*) AS count FROM chunks WHERE request_id=? AND direction=?').get(id, direction).count;
-      this.db.prepare('INSERT INTO chunks VALUES(?,?,?,?,?,?)').run(id, direction, sequence, payload, digest(payload), this.clock());
+      const sequence = manifest.sequences?.[direction] ?? 0;
+      const committedChunks = manifest.chunks;
+      this.rollbackFiles.push(() => this.logs.reconcileExchange(id, committedChunks));
+      this.logs.append(`exchanges/${id}`, { direction, sequence, payload: Buffer.from(payload).toString('base64'), hash: digest(payload), created: this.clock() });
+      manifest.sequences = { ...manifest.sequences, [direction]: sequence + 1 };
       this.db.prepare('UPDATE archive_usage SET bytes=bytes+? WHERE id=1').run(payload.length);
       manifest.bytes += payload.length;
       manifest.chunks += 1;
-      this.db.prepare('UPDATE captures SET data=? WHERE request_id=?').run(JSON.stringify(manifest), id);
+      this.db.prepare('UPDATE captures SET data=? WHERE request_id=?').run(JSON.stringify(this.captureControl(manifest)), id);
     });
   }
   captured(id) {
     const manifest = this.manifest(id);
-    const chunks = this.db.prepare('SELECT direction,sequence,payload,hash,created FROM chunks WHERE request_id=? ORDER BY direction,sequence').all(id).map(row => {
-      const payload = Buffer.from(row.payload);
+    const chunks = [];
+    if (!['deleted', 'expired'].includes(manifest.state)) for (const row of this.logs.read(`exchanges/${id}`)) {
+      const payload = Buffer.from(row.payload, 'base64');
       if (digest(payload) !== row.hash) throw new ServiceError(500, 'capture_integrity_failed', 'Archive integrity verification failed');
-      return { ...row, payload: payload.toString('base64') };
-    });
+      chunks.push(row);
+    }
+    if (chunks.length !== manifest.chunks) throw new ServiceError(500, 'capture_integrity_failed', 'Archive integrity verification failed');
+    chunks.sort((a, b) => a.direction.localeCompare(b.direction) || a.sequence - b.sequence);
     return { manifest, chunks };
   }
   deleteCapture(id, expired = false) {
@@ -267,7 +334,7 @@ export class Store {
       requireValue(record?.finished_at, 'Only finished captures can be removed');
       const manifest = this.manifest(id);
       if (['deleted', 'expired'].includes(manifest.state)) return manifest;
-      this.db.prepare('DELETE FROM chunks WHERE request_id=?').run(id);
+      this.logs.removeExchange(id);
       this.db.prepare('UPDATE archive_usage SET bytes=bytes-? WHERE id=1').run(manifest.bytes);
       this.audit('operator', expired ? 'capture.expire' : 'capture.delete', id);
       return this.captureState(id, expired ? 'expired' : 'deleted', { bytes: 0, chunks: 0 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -48,7 +48,7 @@ test('SIGKILL after dispatch retains reservations and never replays inference', 
   assert.equal(store.db.prepare("SELECT count(*) AS count FROM ledger WHERE kind='dispatch_intent'").get().count, 1);
 });
 
-test('SQLite backup restores payload integrity and unresolved accounting', async context => {
+test('Database and JSONL backup restores payload integrity and unresolved accounting', async context => {
   const directory = temporary(context);
   const restoredDirectory = temporary(context);
   const store = new Store(directory);
@@ -58,13 +58,16 @@ test('SQLite backup restores payload integrity and unresolved accounting', async
   store.append(record.id, 'request', Buffer.from('sk-inert-test-only <script>no execution</script>'));
   store.dispatch(record.id, 'test-model');
   await backup(store.db, join(restoredDirectory, 'router4u.sqlite'));
+  store.logs.copyTo(join(restoredDirectory, 'logs'));
   store.close();
   const restored = new Store(restoredDirectory);
   context.after(() => restored.close());
   restored.recover();
   assert.equal(restored.request(record.id).accounting, 'reconciliation_required');
   assert.equal(Buffer.from(restored.captured(record.id).chunks[0].payload, 'base64').toString(), 'sk-inert-test-only <script>no execution</script>');
-  restored.db.prepare('UPDATE chunks SET payload=?').run(Buffer.from('corrupt'));
+  const path = restored.logs.path(`exchanges/${record.id}`);
+  const row = JSON.parse(readFileSync(path, 'utf8').trim());
+  writeFileSync(path, JSON.stringify({ ...row, payload: Buffer.from('corrupt').toString('base64') }) + '\n');
   assert.throws(() => restored.captured(record.id), /integrity/);
 });
 

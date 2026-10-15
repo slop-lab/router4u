@@ -7,6 +7,7 @@ import { loadConfig } from './config.js';
 import { lockDirectory } from './lock.js';
 import { backupInstallation, restoreInstallation } from './installation-backup.js';
 import { Store } from './store.js';
+import { migrateJsonl } from './migrate-jsonl.js';
 import { loadSecrets } from './runtime.js';
 
 process.umask(0o077);
@@ -58,6 +59,7 @@ async function main() {
   if (values.help || !command) return print(`Router4u operator CLI (Node.js 24)
 
 serve [--config PATH]
+migrate-jsonl --config PATH (requires stopped installation)
 project put ID --file POLICY.json
 project key ID [--scopes inference,usage:read,requests:read,requests:cancel,exchange:export]
 principal revoke ID
@@ -92,6 +94,7 @@ api /admin/PATH [--method METHOD] [--file BODY.json]
 All online commands use --url and ROUTER4U_ADMIN_KEY. Local .runtime/secrets.json is loaded if present (legacy .env is also supported).
 Project keys are displayed only on issuance. Full exchange exports contain sensitive original data.`);
   envFile();
+  if (command === 'migrate-jsonl') return print(migrateJsonl(loadConfig(values.config).data_dir));
   if (command === 'serve') {
     const config = loadConfig(values.config);
     const unlock = lockDirectory(config.data_dir);
@@ -157,6 +160,7 @@ Project keys are displayed only on issuance. Full exchange exports contain sensi
       mkdirSync(values.file, { mode: 0o700 });
       await backup(store.db, join(values.file, 'router4u.sqlite'));
       chmodSync(join(values.file, 'router4u.sqlite'), 0o600);
+      store.logs.copyTo(join(values.file, 'logs'));
       cpSync(values.config, join(values.file, 'router4u.json'));
       print('Gateway ledger and archive backed up. Separately back up the stopped backend auth directory, configuration, and secrets.json. See docs/operations.md.');
     } finally { store.close(); unlock(); }

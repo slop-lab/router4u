@@ -36,11 +36,12 @@ export async function backupInstallation(store, { destination, configPath, backe
     mkdirSync(join(temporary, 'data'), { mode: 0o700 });
     await backup(store.db, join(temporary, 'data/router4u.sqlite'));
     chmodSync(join(temporary, 'data/router4u.sqlite'), 0o600);
+    store.logs.copyTo(join(temporary, 'data/logs'));
     for (const [source, name] of [[configPath, 'router4u.json'], [backendConfig, 'cliproxyapi.yaml'], [authDirectory, 'auth'], [environmentFile, environmentFile.endsWith('.json') ? 'secrets.json' : '.env']]) copyTree(source, join(temporary, name));
     for (const name of ['partitions', 'partitions.compose.yaml', 'compose.env']) {
       const source = join(dirname(configPath), name); if (existsSync(source)) copyTree(source, join(temporary, name));
     }
-    const manifest = { format: 1, schema_version: 2, backend_version: BACKEND_VERSION, created_at: Date.now(), files: inventory(temporary) };
+    const manifest = { format: 1, schema_version: 3, backend_version: BACKEND_VERSION, created_at: Date.now(), files: inventory(temporary) };
     writeFileSync(join(temporary, 'backup-manifest.json'), JSON.stringify(manifest, null, 2), { mode: 0o600 });
     renameSync(temporary, destination);
     return { destination, files: manifest.files.length, credentials_included: true };
@@ -50,7 +51,7 @@ export function restoreInstallation(source, destination) {
   if (existsSync(destination)) throw new Error('Restore destination must not exist');
   requireSeparate(source, destination);
   const manifest = JSON.parse(readFileSync(join(source, 'backup-manifest.json'), 'utf8'));
-  if (manifest.format !== 1 || manifest.schema_version !== 2) throw new Error('Unsupported backup format or schema');
+  if (manifest.format !== 1 || manifest.schema_version !== 3) throw new Error('Unsupported backup format or schema');
   const actual = inventory(source).filter(file => file.path !== 'backup-manifest.json');
   if (JSON.stringify(actual) !== JSON.stringify(manifest.files)) throw new Error('Backup integrity verification failed');
   const db = new DatabaseSync(join(source, 'data/router4u.sqlite'), { readOnly: true });

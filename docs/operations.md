@@ -30,11 +30,11 @@ This verifies a dedicated-partition configuration, not an internal per-attempt s
 
 ## Limits and uncertainty
 
-The initial defaults bound request bodies to 2 MiB, response bodies to 16 MiB, an individual SSE event to 1 MiB, active gateway requests to 32, and logical archive payloads to 1 GiB. Requests are rejected rather than placed in an implicit scheduling queue. Streaming uses awaited writes and never buffers the full response to produce a transcript. Required SQLite commits can add latency per chunk; benchmark your local disk before raising concurrency.
+The initial defaults bound request bodies to 2 MiB, response bodies to 16 MiB, an individual SSE event to 1 MiB, active gateway requests to 32, and logical archive payloads to 1 GiB. Requests are rejected rather than placed in an implicit scheduling queue. Streaming uses awaited writes and never buffers the full response to produce a transcript. Required file syncs and capture-control commits can add latency per chunk; benchmark your local disk before raising concurrency.
 
-SQLite payloads are in a separate table from metadata. Full exports necessarily materialize the selected bounded exchange; at most two exports may be in flight. Local synchronous database work and exports share the process; this installation is intended for modest personal workloads. The operator metrics endpoint reports gateway lifetime, backend time to first byte, and capture time separately. These are request-boundary measurements, not provider-internal execution measurements. Increase scale only after measuring storage and stream behavior.
+Payloads are stored in JSONL files outside SQLite; history and audit are read from files on demand. Full exports necessarily materialize the selected bounded exchange; at most two exports may be in flight. Local synchronous database work and exports share the process; this installation is intended for modest personal workloads. The operator metrics endpoint calculates gateway lifetime, backend time to first byte, and capture time from JSONL on demand. These are request-boundary measurements, not provider-internal execution measurements. Increase scale only after measuring storage and stream behavior.
 
-The archive limit measures retained payload bytes, not database/WAL/index overhead or available disk capacity. Monitor actual disk space too. Logical deletion does not immediately shrink SQLite files. After stopping the service and taking a backup, an operator may checkpoint/vacuum SQLite using standard tools. Physical secure erasure, encrypted backups, and host key recovery are deployment responsibilities. Router4u does not claim encryption at rest.
+The archive limit measures original payload bytes, not base64/JSONL overhead, history/audit files, database/WAL overhead, or available disk capacity. Monitor actual disk space too. Logical deletion does not immediately shrink SQLite files. After stopping the service and taking a backup, an operator may checkpoint/vacuum SQLite using standard tools. Physical secure erasure, encrypted backups, and host key recovery are deployment responsibilities. Router4u does not claim encryption at rest.
 
 ## Recovery and resolution
 
@@ -53,9 +53,9 @@ Revoking a principal or disabling a project affects new work. To stop existing w
 
 ## Backups and restore
 
-For bundled mode, pause admissions, inspect active work, stop the container, and copy the entire named volume. Restore into a fresh volume with the same ownership. This preserves `secrets.json`, gateway/backend configuration, OAuth files, and SQLite data together. Do not copy a live SQLite database without a supported snapshot operation or mix restored files with an old WAL. Keep exactly one active refresh owner.
+For bundled mode, pause admissions, inspect active work, stop the container, and copy the entire named volume. Restore into a fresh volume with the same ownership. This preserves `secrets.json`, gateway/backend configuration, OAuth files, SQLite data, and JSONL logs together. Do not copy a live SQLite database without a supported snapshot operation or mix restored files with an old WAL. Keep exactly one active refresh owner.
 
-The separate Compose topology has explicit `backup-installation` and `restore-installation` commands with integrity checks; see [the Compose backup procedure](compose.md#back-up-and-restore). The database-only `backup` command does not include backend credentials. Synthetic backup tests cannot prove that restored rotating provider tokens will remain accepted.
+The separate Compose topology has explicit `backup-installation` and `restore-installation` commands with integrity checks; see [the Compose backup procedure](compose.md#back-up-and-restore). The gateway-state `backup` command (SQLite and JSONL) does not include backend credentials. Synthetic backup tests cannot prove that restored rotating provider tokens will remain accepted.
 
 After recovery, inspect usage, unknown reservations, and authorized exchange records before resuming admissions. Never replay ambiguous work automatically.
 

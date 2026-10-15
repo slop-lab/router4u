@@ -39,8 +39,8 @@ HTTP continuation handles (`previous_response_id`, `conversation`), background j
 | POST | `/admin/requests/ID/resolve` | Audited resolution: `{"tokens":42,"reason":"verified externally"}` |
 | GET | `/admin/requests/ID/exchange` | Audited original exchange export |
 | DELETE | `/admin/requests/ID/exchange` | Delete finished payloads; keep accounting and deletion state |
-| GET | `/admin/audit?after=SEQUENCE` | Up to 200 ordered audit rows |
-| GET | `/admin/events?after=SEQUENCE` | Up to 200 committed request-finished outbox rows |
+| GET | `/admin/audit?after=SEQUENCE` | Up to 200 ordered JSONL audit records |
+| GET | `/admin/events?after=SEQUENCE` | Up to 200 JSONL notification records |
 | GET | `/admin/backends/ROUTE/credentials` | Safe metadata only, no tokens |
 | GET | `/admin/backends/ROUTE/models` | Explicit backend model discovery |
 | GET | `/admin/backends/ROUTE/inspect` | Pinned version, retry configuration, credential-count diagnostics |
@@ -48,7 +48,7 @@ HTTP continuation handles (`previous_response_id`, `conversation`), background j
 | POST | `/admin/backends/ROUTE/callback` | Submit loopback callback: `{"redirect_url":"..."}` |
 | GET | `/admin/backends/ROUTE/status?state=STATE` | Read OAuth progress |
 
-Audit/outbox polling is non-destructive. Persist the last processed sequence after processing; repeated reads may deliver duplicates. Sequence cursors provide replay over retained rows. No push subscription is implemented. Outbox events are committed with request settlement; dashboards are not accounting authorities.
+Audit/event polling reads JSONL files non-destructively. Persist the last processed sequence after processing; repeated reads may deliver duplicates. Sequence cursors provide replay over retained rows. No push subscription is implemented. Analysis logs are written after operational commits and may have crash/write-failure gaps. They are not a transactional outbox or accounting authority; see [JSONL storage](logs.md).
 
 `node src/cli.js --help` lists operator commands. `api /admin/PATH --method METHOD --file BODY.json` provides access to the same authenticated surface without writing database rows manually.
 
@@ -112,7 +112,7 @@ Issue keys with `{"scopes":["inference","usage:read"]}` on the key endpoint, or 
 | POST | `/admin/requests/ID/observations` | Idempotent verified usage correction |
 | POST | `/admin/retention/run` | Expire up to 100 completed captures |
 | GET | `/admin/service-usage` | Service metrics and remaining additional budgets |
-| GET | `/admin/metrics` | Counts, uncertainty, archive use, and latency measurements |
+| GET | `/admin/metrics` | Counts, uncertainty, archive use, analysis-log failures, and on-demand JSONL latency aggregates |
 | GET | `/admin/alerts` | Actionable uncertainty, archive capacity, and account drift alerts |
 | GET | `/admin/health` | Local, management, and configured-authentication status |
 

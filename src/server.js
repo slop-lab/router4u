@@ -237,8 +237,8 @@ export function createGateway(input, options = {}) {
         const keyPath = path.match(/^\/admin\/principals\/([\w-]+)$/);
         if (keyPath && method === 'DELETE') { store.revokeKey(keyPath[1]); return json(response, 200, { revoked: true }); }
         if (path === '/admin/pause' && method === 'POST') { store.pause(body.paused); return json(response, 200, { paused: store.paused() }); }
-        if (path === '/admin/audit' && method === 'GET') return json(response, 200, store.db.prepare('SELECT * FROM audit WHERE sequence>? ORDER BY sequence LIMIT 200').all(Number(url.searchParams.get('after') ?? 0)));
-        if (path === '/admin/events' && method === 'GET') return json(response, 200, store.db.prepare('SELECT * FROM outbox WHERE sequence>? ORDER BY sequence LIMIT 200').all(Number(url.searchParams.get('after') ?? 0)));
+        if (path === '/admin/audit' && method === 'GET') return json(response, 200, store.logs.rows('audit', Number(url.searchParams.get('after') ?? 0)));
+        if (path === '/admin/events' && method === 'GET') return json(response, 200, store.logs.rows('events', Number(url.searchParams.get('after') ?? 0)));
         if (path === '/admin/active' && method === 'GET') return json(response, 200, [...active.keys()].map(id => store.request(id)));
         const listPath = path.match(/^\/admin\/projects\/([\w-]+)\/requests$/);
         if (listPath && method === 'GET') return json(response, 200, store.requests(listPath[1]));

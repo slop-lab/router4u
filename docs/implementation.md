@@ -2,7 +2,7 @@
 
 Router4u provides shared personal LLM access for independent applications. The gateway owns application access and accounting; CLIProxyAPI owns provider integration. This document describes those boundaries without requiring external design documents.
 
-The gateway is one Node.js 24 process with SQLite WAL and FULL synchronous durability on a local disk. Transactions serialize admission across project and service scopes. Payload chunks occupy a separate table; metadata reads never select payloads. This makes a complete offline installation possible without a database server. Multiple service replicas and network filesystems are unsupported.
+The gateway is one Node.js 24 process with SQLite WAL and FULL synchronous durability on a local disk. Transactions serialize admission across project and service scopes. Payload chunks, detailed request history, audit actions, and notification events are JSONL files. SQLite retains transactional operational state; see [log storage](logs.md). This makes a complete offline installation possible without a database server. Multiple service replicas and network filesystems are unsupported.
 
 CLIProxyAPI v8.0.28 owns upstream credentials, OAuth, refresh, and protocol translation. Router4u owns project identity, immutable policy snapshots, admission, reservations, client-boundary capture, and operator audit records. No agent or tool execution takes place in Router4u.
 
@@ -22,7 +22,7 @@ The default image bundles the gateway and CLIProxyAPI, with backend inference an
 
 The installation file supplies initial configuration and restart-only fields. A browser save establishes a durable SQLite override for mutable route/account/service configuration; explicit file reload replaces that override and versions its validated contents; backend credential mutations are delegated and audited, and later inspection reports drift. Principal keys default to inference and metadata access without payload-export authority.
 
-Calendar day/month and rolling budgets support local request counts, estimated tokens, and conservatively reserved observable dispatches. Internal backend attempts remain excluded from exactness claims. Request-boundary usage corrections have stable source/event identity, durable replay-safe insertion, audited ledger deltas, and outbox events.
+Calendar day/month and rolling budgets support local request counts, estimated tokens, and conservatively reserved observable dispatches. Internal backend attempts remain excluded from exactness claims. Request-boundary usage corrections have stable source/event identity, durable replay-safe insertion, audited ledger deltas, and JSONL notification events.
 
 ## Web administration
 
