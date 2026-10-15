@@ -227,7 +227,8 @@ export function createGateway(input, options = {}) {
         if (path === '/admin/principals' && method === 'GET') return json(response, 200, store.db.prepare('SELECT id,project_id,enabled FROM principals ORDER BY project_id,id').all());
         if (await administration({ path, method, body, url, store, config, environment, routeFor, reload, active, reply: value => json(response, 200, value) })) return;
         if (path === '/admin/projects' && method === 'GET') return json(response, 200, store.projects());
-        const projectPath = path.match(/^\/admin\/projects\/([\w-]+)(\/keys)?$/);
+        const projectPath = path.match(/^\/admin\/projects\/([^/]+)(\/keys)?$/);
+        if (projectPath) requireValue(/^[A-Za-z0-9_-]{1,64}$/.test(projectPath[1]), 'Project ID must contain 1–64 letters (A–Z, a–z), digits, underscores, or hyphens');
         if (projectPath && method === 'PUT' && !projectPath[2]) {
           requireValue(Array.isArray(body.routes), 'routes is required');
           body.routes.forEach(routeFor);

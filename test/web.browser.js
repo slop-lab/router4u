@@ -64,6 +64,10 @@ try {
   assert.equal(gateway.config.routes[0].enabled, true);
   await page.getByRole('link', { name: 'Projects & keys', exact: true }).click();
   await page.getByRole('button', { name: 'Create project', exact: true }).click();
+  for (const invalid of ['my app', 'my.app', '프로젝트', 'bad/id', 'x'.repeat(65)]) {
+    await page.getByLabel('Project ID', { exact: true }).fill(invalid);
+    assert.equal(await page.getByLabel('Project ID', { exact: true }).evaluate(input => input.checkValidity()), false, `Reject invalid project ID: ${invalid}`);
+  }
   await page.getByLabel('Project ID', { exact: true }).fill('browser-app');
   await page.getByLabel('Authorized routes').selectOption(['local']);
   await page.getByRole('button', { name: 'Save project', exact: true }).click();

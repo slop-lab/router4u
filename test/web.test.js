@@ -22,6 +22,12 @@ test('browser assets, login, CSRF, logout, and project credentials stay isolated
   assert.equal((await fetch(f.url + '/admin/projects', { headers })).status, 200);
   assert.equal((await fetch(f.url + '/admin/projects', { headers: { ...headers, origin: 'https://evil.example' } })).status, 403);
   assert.equal((await f.call('/admin/projects')).status, 401);
+  for (const id of ['my app', 'my.app', '프로젝트', 'bad/id', 'x'.repeat(65)]) {
+    const invalid = await fetch(f.url + '/admin/projects/' + encodeURIComponent(id), { method: 'PUT', headers, body: JSON.stringify({ routes: ['local'] }) });
+    assert.equal(invalid.status, 400);
+    assert.match((await invalid.json()).error.message, /Project ID must contain/);
+    assert.equal(f.gateway.store.project(id), null);
+  }
   const create = await fetch(f.url + '/admin/projects/browser-app', { method: 'PUT', headers, body: JSON.stringify({ routes: ['local'] }) });
   assert.equal(create.status, 200);
   const issued = await fetch(f.url + '/admin/projects/browser-app/keys', { method: 'POST', headers, body: '{}' });

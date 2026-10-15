@@ -48,19 +48,19 @@ async function render() {
   catch (error) { if (version === pageVersion && csrf) $('#content').replaceChildren(card(heading('Unable to load this view'), muted(error.message), action('Try again', render))); notify(error.message); }
 }
 async function editProject(project, routes) {
-  const id = input(project?.id ?? '', { required: '', placeholder: 'my-application', pattern: '[A-Za-z0-9_-]{1,64}' }); if (project) id.disabled = true;
+  const id = input(project?.id ?? '', { required: '', placeholder: 'my-application', pattern: '[A-Za-z0-9_\\-]{1,64}', title: 'Use 1–64 letters (A–Z, a–z), digits, underscores, or hyphens' }); if (project) id.disabled = true;
   const route = el('select', { multiple: '', size: String(Math.min(5, Math.max(2, routes.length))) }, ...routes.map(r => { const option = el('option', { value: r.id }, `${r.id} · ${r.profile}`); option.selected = project?.policy.routes.includes(r.id) ?? false; return option; }));
   const concurrency = input(project?.policy.concurrency ?? '', { type: 'number', min: '1', placeholder: 'Unlimited' });
   const tokens = input(project?.policy.daily_tokens ?? '', { type: 'number', min: '1', placeholder: 'Unlimited' });
   const requests = input(project?.policy.daily_requests ?? '', { type: 'number', min: '1', placeholder: 'Unlimited' });
   const advanced = editor(project?.policy ?? { routes: [] });
   const details = el('details', {}, el('summary', {}, 'Advanced policy (JSON)'), muted('Advanced fields are preserved; route selection and limits above override the matching JSON fields.'), field('Policy', advanced));
-  const form = el('form', {}, muted('Leave a limit blank for no project limit on that dimension. Service, route, rate, and additional budget limits still apply.'), field('Project ID', id), field('Authorized routes (select one or more)', route), el('div', { class: 'grid' }, field('Concurrent requests', concurrency), field('Daily request limit', requests), field('Daily token estimate limit', tokens)), details, el('button', {}, 'Save project'));
+  const form = el('form', {}, muted('Leave a limit blank for no project limit on that dimension. Service, route, rate, and additional budget limits still apply.'), field('Project ID', id), muted('Use 1–64 letters (A–Z, a–z), digits, underscores, or hyphens for the project ID.'), field('Authorized routes (select one or more)', route), el('div', { class: 'grid' }, field('Concurrent requests', concurrency), field('Daily request limit', requests), field('Daily token estimate limit', tokens)), details, el('button', {}, 'Save project'));
   form.addEventListener('submit', async event => { event.preventDefault(); try { await api(`/admin/projects/${encodeURIComponent(id.value)}`, 'PUT', { ...JSON.parse(advanced.value), routes: [...route.selectedOptions].map(o => o.value), concurrency: concurrency.value.trim() ? Number(concurrency.value) : null, daily_requests: requests.value.trim() ? Number(requests.value) : null, daily_tokens: tokens.value.trim() ? Number(tokens.value) : null }); $('#detail').close(); notify('Project policy saved'); await render(); } catch (error) { notify(error.message); } });
   modal(project ? 'Edit project' : 'Create a project', form);
 }
 async function editRoute(route, snapshot) {
-  const id = input(route?.id ?? '', { required: '', pattern: '[A-Za-z0-9_-]{1,64}', placeholder: 'personal' }); if (route) id.disabled = true;
+  const id = input(route?.id ?? '', { required: '', pattern: '[A-Za-z0-9_\\-]{1,64}', title: 'Use 1–64 letters (A–Z, a–z), digits, underscores, or hyphens', placeholder: 'personal' }); if (route) id.disabled = true;
   const profile = el('select', {}, ...[['codex', 'Codex account'], ['api_key', 'Provider API key']].map(([value, name]) => el('option', { value }, name))); profile.value = route?.profile ?? 'codex';
   const base = input(route?.base_url ?? 'http://backend:8317/v1', { required: '', type: 'url' });
   const models = input(route?.models.join(', ') ?? '', { placeholder: 'Choose models below, or enter IDs separated by commas' });
